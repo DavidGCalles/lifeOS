@@ -1,0 +1,9 @@
+version: '3.8'
+services:
+  lifeos:
+    build: .
+    container_name: lifeos
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
