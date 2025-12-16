@@ -1,12 +1,8 @@
-import sys
-import os
-
-# Aseguramos que Python encuentre la carpeta src
-#sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
+'''
+Docstring for test_llm
+'''
 try:
     from src.llm_config import llm
-    from langchain_core.messages import HumanMessage
     print("✅ Configuración cargada (src/llm_config.py).")
 except ImportError as e:
     print(f"❌ Error de importación. Asegúrate de haber creado el archivo src/llm_config.py: {e}")
@@ -16,6 +12,9 @@ except Exception as e:
     exit(1)
 
 def test_connection():
+    '''
+    Prueba básica para verificar que el LLM responde.
+    '''
     print("\n>>> 🧪 INICIANDO PRUEBA DE CONEXIÓN Y FALLBACK...")
     print(">>> Intentando invocar al modelo primario (o sus reservas)...")
    
