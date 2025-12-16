@@ -1,8 +1,6 @@
 '''
 Script de test para los agentes personalizados de LifeOS.
 Verifica que los agentes "Padrino de Adicciones" y "Kitchen Chief"'''
-import sys
-import os
 from crewai import Task, Crew
 
 try:
