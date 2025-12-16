@@ -1,70 +1,50 @@
 '''
 Script de test para los agentes personalizados de LifeOS.
 Verifica que los agentes "Padrino de Adicciones" y "Kitchen Chief"'''
-from crewai import Task, Crew
+import sys
+import os
+from crewai import Crew
+
+# Aseguramos que Python encuentre la carpeta src
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
+    # Importamos los Agentes (del archivo renombrado) y las Tareas nuevas
     from src.crew_agents import LifeOSAgents
-    print("✅ Clase LifeOSAgents importada correctamente.")
+    from src.tasks import LifeOSTasks
+    print("✅ Clases importadas correctamente.")
 except ImportError as e:
-    print(f"❌ Error importando agentes: {e}")
+    print(f"❌ Error importando: {e}")
     exit(1)
 
-def test_padrino_personality():
-    '''Testea la personalidad y respuestas del agente "Padrino de Adicciones".'''
-    print("\n>>> 🕵️ TESTEANDO AL PADRINO...")  
+def test_full_chain():
+    '''
+    Testea la cadena completa de análisis y respuesta del agente "Padrino de Adicciones".
+    Simula un mensaje de usuario con riesgo de recaída y verifica la respuesta final.
+    '''
+    print("\n>>> 🕵️ TESTEANDO CADENA COMPLETA (Análisis + Respuesta)...")
     # 1. Instanciar
     agents = LifeOSAgents()
+    tasks = LifeOSTasks()
+    # Usamos al Padrino para el test
     padrino = agents.padrino_agent()
-    # 2. Verificar atributos básicos
-    print(f"   Rol: {padrino.role}")
-    print(f"   Goal: {padrino.goal}")
-    # 3. Prueba de Fuego: ¿Sabe hablar?
-    # Creamos una tarea dummy solo para este test
-    dummy_task = Task(
-        description="El usuario te saluda diciendo 'Hola, quiero fumar'. Responde con TU personalidad en UNA sola frase corta.",
-        expected_output="Una frase agresiva-cariñosa disuadiendo al usuario.",
-        agent=padrino
-    )
+    # 2. Mensaje simulado (Situación de riesgo)
+    user_msg = "He tenido un día horrible en el trabajo y creo que me merezco un cigarro."
+    print(f"   📩 Input Usuario: '{user_msg}'")
+    # 3. Crear las tareas
+    # Observa: task1 (análisis) alimenta a task2 (respuesta)
+    task1 = tasks.analysis_task(padrino, user_msg)
+    task2 = tasks.response_task(padrino)
+    # 4. Crear el Crew secuencial
     crew = Crew(
         agents=[padrino],
-        tasks=[dummy_task],
+        tasks=[task1, task2],
         verbose=True
     )
-    print("   ⚡ Ejecutando interacción de prueba (esto gasta tokens)...")
+    print("   ⚡ Ejecutando Crew...")
     result = crew.kickoff()
-    print("\n   💬 RESPUESTA DEL PADRINO:")
+    print("\n   💬 RESULTADO FINAL (Lo que vería el usuario):")
     print(f"   '{result}'")
-    if "fumar" in str(result).lower() or "mierda" in str(result).lower() or "no" in str(result).lower():
-        print("✅ EL PADRINO ESTÁ VIVO Y DE MAL HUMOR.")
-    else:
-        print("⚠️ El Padrino ha respondido, pero verifíca si el tono es correcto.")
-
-def test_kitchen_personality():
-    '''Testea la personalidad y respuestas del agente "Kitchen Chief".'''
-    print("\n>>> 🧑‍🍳 TESTEANDO AL CHEF...")
-    
-    agents = LifeOSAgents()
-    chef = agents.kitchen_agent()
-    
-    dummy_task = Task(
-        description="El usuario dice 'Tengo hambre y solo hay huevos'. Responde con TU personalidad en UNA frase.",
-        expected_output="Una orden culinaria directa.",
-        agent=chef
-    )
-    
-    crew = Crew(
-        agents=[chef],
-        tasks=[dummy_task],
-        verbose=True
-    )
-    
-    result = crew.kickoff()
-    
-    print("\n   💬 RESPUESTA DEL CHEF:")
-    print(f"   '{result}'")
-    print("✅ EL CHEF ESTÁ OPERATIVO.")
 
 if __name__ == "__main__":
-    test_padrino_personality()
-    # test_kitchen_personality()
+    test_full_chain()
