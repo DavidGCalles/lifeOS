@@ -59,3 +59,23 @@ class LifeOSAgents:
             verbose=True,
             allow_delegation=False
         )
+
+    def dispatcher_agent(self):
+        '''Define el agente "Dispatcher de LifeOS" que enruta las solicitudes del usuario al agente adecuado.'''
+        return Agent(
+            role='Dispatcher de LifeOS',
+            goal='Determinar qué agente o agentes deben atender al usuario basándose en su mensaje.',
+            backstory="""
+                Eres el cerebro central de LifeOS. Tu ÚNICA función es leer el input del usuario 
+                y decidir quién debe encargarse de él.
+                
+                Tus agentes disponibles son:
+                1. PADRINO: Para temas de adicciones, tabaco, recaídas o disciplina mental.
+                2. KITCHEN: Para temas de comida, recetas, hambre, compras o nutrición.
+                
+                Eres frío y calculador. No hablas con el usuario, solo enrutas tráfico.
+            """,
+            llm=llm,
+            verbose=True,
+            allow_delegation=False
+        )

@@ -49,3 +49,24 @@ class LifeOSTasks:
             expected_output="Mensaje de respuesta final para el usuario.",
             agent=agent
         )
+
+    def router_task(self, agent, user_message):
+        '''Define la tarea de enrutamiento para decidir qué agente debe actuar.'''
+        return Task(
+            description=dedent(f"""
+                Analiza el mensaje del usuario: "{user_message}"
+                
+                Decide qué agente debe actuar.
+                
+                Reglas:
+                - Si es sobre fumar, ansiedad, disciplina -> 'PADRINO'
+                - Si es sobre comida, hambre, recetas -> 'KITCHEN'
+                - Si menciona ambos (ej: "tengo ansiedad por fumar y quiero comer") -> 'AMBOS'
+                - Si no tiene sentido o es saludo genérico -> 'PADRINO' (Por defecto es el líder).
+                
+                Tu respuesta debe ser ÚNICAMENTE una de estas palabras: PADRINO, KITCHEN, AMBOS.
+                No añadas puntuación ni explicaciones.
+            """),
+            expected_output="Una sola palabra: PADRINO, KITCHEN o AMBOS.",
+            agent=agent
+        )
