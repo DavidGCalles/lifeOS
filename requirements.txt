@@ -4,3 +4,4 @@ python-telegram-bot
 crewai
 crewai-tools
 langchain-google-genai
+langchain-openai
