@@ -2,18 +2,18 @@ model_list:
   - model_name: crewai-proxy
     litellm_params:
       model: gemini/gemini-2.5-flash
-      api_key: os.environ/GOOGLE_API_KEY
+      api_key: os.environ/GEMINI_API_KEY
       rpm: 5 # Freno de mano para evitar ban
 
   - model_name: crewai-proxy
     litellm_params:
       model: gemini/gemini-2.0-flash-lite
-      api_key: os.environ/GOOGLE_API_KEY
+      api_key: os.environ/GEMINI_API_KEY
 
   - model_name: crewai-proxy
     litellm_params:
       model: gemini/gemma-3-27b-it
-      api_key: os.environ/GOOGLE_API_KEY
+      api_key: os.environ/GEMINI_API_KEY
 
 router_settings:
   fallbacks:

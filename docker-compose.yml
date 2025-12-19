@@ -10,6 +10,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       # Le decimos a tu app dónde está el cerebro ahora
+      - OPENAI_API_KEY=sk-fake-key-bypass
       - LITELLM_URL=http://litellm:4000 
     volumes:
       - .:/app
