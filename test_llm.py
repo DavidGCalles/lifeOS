@@ -1,40 +1,51 @@
 '''
 Docstring for test_llm
 '''
+import os
+import sys
+from openai import OpenAI
+
+# --- CONFIGURACIÓN ---
+# 1. ¿Dónde está escuchando tu servicio de LiteLLM?
+# Si estás dentro de docker, suele ser http://litellm:4000/v1 o el nombre del servicio en el compose.
+BASE_URL = os.getenv("LITELLM_URL", "http://litellm:4000") 
+
+# 2. La API Key 'falsa'. 
+# Al conectar con LiteLLM local, a veces requiere una string cualquiera para no fallar la validación del cliente,
+# aunque la auth real la hace el servicio con Google.
+API_KEY = "sk-cualquier-cosa-porque-usamos-litellm"
+
+print(f"--- Test de Conexión: Cliente OpenAI -> Servicio LiteLLM ({BASE_URL}) ---")
+
 try:
-    from src.llm_config import llm
-    print("✅ Configuración cargada (src/llm_config.py).")
-except ImportError as e:
-    print(f"❌ Error de importación. Asegúrate de haber creado el archivo src/llm_config.py: {e}")
-    exit(1)
+    # 3. Iniciamos el cliente OFICIAL de OpenAI
+    # Le decimos: "No vayas a los servidores de OpenAI, ve a mi servicio local".
+    client = OpenAI(
+        api_key=API_KEY,
+        base_url=BASE_URL
+    )
+
+    # 4. Llamada estándar. 
+    # El modelo aquí debe coincidir con el alias que le hayas puesto en tu config de LiteLLM.
+    # Si en LiteLLM mapeaste "gemini-flash" a google/gemini-1.5-flash, usa "gemini-flash".
+    # Si no mapeaste nada, usa el nombre real: "gemini/gemini-1.5-flash"
+    MODELO_A_PROBAR = "gemini/gemini-2.5-flash" 
+
+    response = client.chat.completions.create(
+        model=MODELO_A_PROBAR,
+        messages=[
+            {"role": "user", "content": "Hola, ¿me recibes? Responde 'SÍ' y tu modelo."}
+        ]
+    )
+
+    # 5. Resultado
+    print("✅ CONEXIÓN EXITOSA")
+    print("Respuesta:", response.choices[0].message.content)
+
 except Exception as e:
-    print(f"❌ Error en la configuración del LLM: {e}")
-    exit(1)
-
-def test_connection():
-    '''
-    Prueba básica para verificar que el LLM responde.
-    '''
-    print("\n>>> 🧪 INICIANDO PRUEBA DE CONEXIÓN Y FALLBACK...")
-    print(">>> Intentando invocar al modelo primario (o sus reservas)...")
-   
-    try:
-        # Usamos invoke, que es la llamada estándar que usará CrewAI por debajo
-        msg = "Hola. Confirma que estás operativo respondiendo solo con la palabra: OPERATIVO."
-        response = llm.invoke(msg)      
-        print("\n✅ RESPUESTA RECIBIDA:")
-        print("----------------------------------------")
-        print(f"Contenido: {response.content}")
-        print(f"Modelo (metadata): {response.response_metadata.get('model_name', 'Desconocido (Oculto por Fallback wrapper)')}")
-        print("----------------------------------------")
-        print(">>> ✅ PRUEBA EXITOSA: El cerebro está conectado.")
-        
-    except Exception as e:
-        print("\n❌ ERROR CRÍTICO LLAMANDO AL LLM:")
-        print(e)
-        print("\nPosibles causas:")
-        print("1. API Key inválida en .env")
-        print("2. Rate Limit agresivo (Si esto pasa, el fallback debería haber saltado, así que revisa si TODOS los modelos fallaron).")
-
-if __name__ == "__main__":
-    test_connection()
+    print("🔥 FALLO DE CONEXIÓN")
+    print(f"Error: {e}")
+    print("\nPosibles causas:")
+    print("1. El servicio de LiteLLM no está corriendo o no es accesible en esa URL.")
+    print("2. El nombre del modelo no coincide con lo que LiteLLM espera.")
+    sys.exit(1)
