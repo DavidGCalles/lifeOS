@@ -1,1 +1,33 @@
+# --- 🔐 SECRETOS (Ni se te ocurra comitear esto) ---
 .env
+.env.*
+# Si creas claves privadas para google cloud, etc.
+*.json
+!src/  # Excepción: no ignorar JSONs que sean parte del código fuente real
+
+# --- 🐍 PYTHON BASURA (Compilados y caché) ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- 🐳 DOCKER & LOGS ---
+# Si mapeas logs a una carpeta local
+logs/
+*.log
+
+# --- 🖥️ IDEs y SISTEMA (Mierdas de Mac/Windows/VSCode) ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- LITELLM (Opcional) ---
+# Si decides guardar datos de costes locales
+litellm_data/

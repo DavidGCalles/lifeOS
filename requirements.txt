@@ -1,3 +1,17 @@
 python-dotenv
-google-generativeai
 python-telegram-bot
+crewai
+crewai-tools
+openai
+
+
+#Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bucle con crewai-tools
+litellm
+fastapi
+uvicorn
+apscheduler
+gunicorn
+orjson
+requests
+email-validator
+fastapi-sso

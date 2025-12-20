@@ -3,7 +3,25 @@ services:
   lifeos:
     build: .
     container_name: lifeos
+    depends_on:
+      - litellm
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
+      # Le decimos a tu app dónde está el cerebro ahora
+      - OPENAI_API_KEY=sk-fake-key-bypass
     volumes:
       - .:/app
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: lifeos_litellm
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    env_file:
+      - .env
+    # Arranca con debug para ver si saltan los fallbacks
+    command: "--config /app/config.yaml --port 4000 --detailed_debug"

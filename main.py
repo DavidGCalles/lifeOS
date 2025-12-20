@@ -1,52 +1,80 @@
 import logging
+import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from src.config import load_credentials
-from src.agents.orchestrator_agent import OrchestratorAgent
-from src.utils import available_models
+# Importamos el NUEVO orquestador basado en CrewAI
+from src.crew_orchestrator import CrewOrchestrator 
 
 # Configurar logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# --- INICIALIZACIÓN DEL CEREBRO ---
-# Nota: Esto fallará hasta que corrijamos config.py y el .env
-GEMINI_API_KEY, TELEGRAM_TOKEN = load_credentials()
-orchestrator = OrchestratorAgent(GEMINI_API_KEY)
+# --- INICIALIZACIÓN ---
+TELEGRAM_TOKEN = load_credentials() # Ya no pedimos la key de Gemini
 
-# --- TELEGRAM HANDLERS ---
+# Instanciamos el orquestador de Crews (se conecta a LiteLLM automáticamente por tu config)
+orchestrator = CrewOrchestrator()
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Maneja el comando /start, iniciando una nueva conversación."""
-    orchestrator.start_chat(update.effective_chat.id)
+    """Saludo inicial."""
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Sistema Online. Arquitectura de Fallback activa. Tengo munición infinita. Desahógate."
+        text="🔥 LifeOS v2 Online (CrewAI + LiteLLM).\nSistema de agentes distribuido listo. ¿Cuál es el plan?"
     )
 
 async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Procesa los mensajes de texto del usuario."""
+    """
+    Manejo del flujo principal:
+    Usuario -> Router -> Agente Especialista -> Usuario
+    """
     chat_id = update.effective_chat.id
-
     if not update.message or not update.message.text:
-        logging.info("Update received with no message text.")
         return
 
-    text = update.message.text
+    user_text = update.message.text
+    
+    # 1. Feedback visual: "Escribiendo..."
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # Derivar al orquestador para obtener una respuesta
-    respuesta, modelo_usado, nombre_agente = orchestrator.route(chat_id, text)
-    # Enviar la respuesta de vuelta al usuario
-    respuesta_final = f"[{nombre_agente}]\n\n{respuesta}\n\n_🔧 Procesado por: {modelo_usado}_"
-    await context.bot.send_message(chat_id=chat_id, text=respuesta_final, parse_mode='Markdown')
+    try:
+        # 2. FASE 1: ENRUTAMIENTO (Router Agent)
+        # Averiguamos la intención (PADRINO, KITCHEN, CHAT...)
+        logging.info(f"Enrutando mensaje: {user_text}")
+        # Como crewAI es bloqueante, lo ejecutamos en un thread aparte para no congelar Telegram
+        target_agent = await asyncio.to_thread(orchestrator.route_request, user_text)
+        
+        logging.info(f"Destino decidido: {target_agent}")
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing") # Renovamos estado
+
+        # 3. FASE 2: EJECUCIÓN (Specialist Agent)
+        # Lanzamos el Crew específico
+        respuesta = await asyncio.to_thread(orchestrator.execute_request, user_text, target_agent)
+
+        # 4. Respuesta al usuario
+        # Formateamos un poco para saber quién habla
+        mensaje_final = f"🤖 *[{target_agent}]*\n\n{respuesta}"
+        
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=mensaje_final, 
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        logging.error(f"Error en el proceso: {e}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"⚠️ Error crítico en el núcleo de los agentes:\n`{str(e)}`",
+            parse_mode='Markdown'
+        )
 
 def main():
-    """Inicia el bot de Telegram y se queda escuchando."""
-    available_models()
+    """Loop principal de Telegram."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    # Añadir manejadores de comandos y mensajes
     app.add_handler(CommandHandler('start', start))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), chat_logic))
-    print(">>> PADRINO INMORTAL ESCUCHANDO...")
+    
+    print(">>> 🚀 LifeOS (CrewAI Edition) ESCUCHANDO...")
     app.run_polling()
 
 if __name__ == "__main__":
