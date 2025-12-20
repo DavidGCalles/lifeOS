@@ -33,7 +33,6 @@ class CrewOrchestrator:
         Ejecuta el Crew del agente seleccionado.
         """
         active_agents = []
-        
         # Selector de Agentes
         if target_agent_key == 'PADRINO':
             active_agents.append(self.agents.padrino_agent())
@@ -50,7 +49,6 @@ class CrewOrchestrator:
         agent = active_agents[0]
         task1 = self.tasks.analysis_task(agent, user_message)
         task2 = self.tasks.response_task(agent)
-        
         execution_crew = Crew(
             agents=[agent],
             tasks=[task1, task2],

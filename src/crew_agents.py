@@ -1,9 +1,6 @@
 '''
 Docstring for src.agents
 '''
-'''
-Definición de agentes especializados de LifeOS (v2.1 - Jane Edition).
-'''
 from crewai import Agent
 from src.llm_config import llm
 
@@ -13,6 +10,9 @@ class LifeOSAgents:
     '''
     # --- NÚCLEO CENTRAL ---
     def jane_agent(self):
+        '''
+        Agente principal: Jane, Jefa de Gabinete y Guardiana de la Familia.
+        '''
         return Agent(
             role='Jane (Chief of Staff & Guardian)',
             goal='Coordinar la vida familiar, gestionar la agenda y velar por el bienestar emocional de la familia.',
@@ -33,6 +33,9 @@ class LifeOSAgents:
 
     # --- ESPECIALISTAS ---
     def padrino_agent(self):
+        '''
+        Agente especialista: Padrino, Mentor de Disciplina y Control de Vicios.
+        '''
         return Agent(
             role='Mentor de Disciplina (Estoicismo)',
             goal='Mantener al usuario enfocado y libre de vicios, sin destruir su autoestima.',
@@ -50,6 +53,9 @@ class LifeOSAgents:
         )
 
     def kitchen_agent(self):
+        '''
+        Agente especialista: Kitchen, Jefe de Cocina y Nutrición Eficiente.
+        '''
         return Agent(
             role='Kitchen Chief (Nutrición Eficiente)',
             goal='Optimizar la energía mediante comida real, adaptándose al stock disponible.',
@@ -67,6 +73,9 @@ class LifeOSAgents:
 
     # --- ROUTER ---
     def dispatcher_agent(self):
+        '''
+        Agente enrutador: Decide qué agente debe atender la solicitud.
+        '''
         return Agent(
             role='Router Central LifeOS',
             goal='Clasificar la intención del usuario y derivar al especialista correcto o a Jane.',

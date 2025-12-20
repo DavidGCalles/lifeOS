@@ -6,7 +6,7 @@ from textwrap import dedent
 from crewai import Task
 
 class LifeOSTasks:
-    
+    '''Define las tareas específicas para los agentes de LifeOS.'''   
     def analysis_task(self, agent, user_message):
         """Tarea genérica de análisis."""
         return Task(
