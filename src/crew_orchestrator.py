@@ -30,26 +30,25 @@ class CrewOrchestrator:
 
     def execute_request(self, user_message, target_agent_key):
         """
-        Ejecuta el Crew del agente seleccionado (Análisis -> Respuesta).
+        Ejecuta el Crew del agente seleccionado.
         """
-        # 1. Seleccionar el agente correcto
         active_agents = []
+        # Selector de Agentes
         if target_agent_key == 'PADRINO':
             active_agents.append(self.agents.padrino_agent())
         elif target_agent_key == 'KITCHEN':
             active_agents.append(self.agents.kitchen_agent())
-        else: # AMBOS o Fallback
-            # En caso de 'AMBOS', por simplicidad inicial, activamos al Padrino primero
-            # (Mejora futura: crear un Crew con los dos)
-            print(f"ℹ Modo complejo '{target_agent_key}' detectado. Activando Padrino por defecto.")
-            active_agents.append(self.agents.padrino_agent())
+        elif target_agent_key == 'JANE':
+            active_agents.append(self.agents.jane_agent())
+        else:
+            # Fallback seguro: Ante la duda, Jane toma el mando.
+            print(f"ℹ Destino '{target_agent_key}' no reconocido. Derivando a Jane.")
+            active_agents.append(self.agents.jane_agent())
 
-        # 2. Construir las tareas para el agente seleccionado
-        # Asumimos un solo agente por ahora para mantener la linealidad del chat
+        # Construcción y ejecución del Crew
         agent = active_agents[0]
         task1 = self.tasks.analysis_task(agent, user_message)
         task2 = self.tasks.response_task(agent)
-        # 3. Lanzar el Crew de ejecución
         execution_crew = Crew(
             agents=[agent],
             tasks=[task1, task2],
