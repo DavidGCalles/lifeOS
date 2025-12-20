@@ -6,6 +6,7 @@
 !src/  # Excepción: no ignorar JSONs que sean parte del código fuente real
 
 # --- 🐍 PYTHON BASURA (Compilados y caché) ---
+src/__pycache__/
 __pycache__/
 *.pyc
 *.pyo
