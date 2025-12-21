@@ -1,0 +1,33 @@
+analysis:
+  description: >
+    ANALIZA el mensaje del usuario con tu lente de ({role}):
+    Mensaje: "{user_message}"
+    
+    Determina:
+    1. INTENCIÓN REAL: ¿Qué necesita?
+    2. CONTEXTO: ¿Afecta a la familia?
+    
+    Output: Reporte interno breve.
+  expected_output: "Reporte de análisis táctico."
+
+response:
+  description: >
+    Genera la respuesta final al usuario basada en el análisis previo.
+    Mantén tu PERSONALIDAD ({role}) al 100%.
+    Sé útil y accionable.
+  expected_output: "Respuesta de texto lista para enviar."
+
+router:
+  description: >
+    Analiza el mensaje del usuario: "{user_message}"
+    
+    Tienes disponibles los siguientes agentes especialistas:
+    
+    {agent_options}
+    
+    DECISIÓN:
+    ¿Cuál de los agentes anteriores es el MEJOR para atender esto?
+    
+    Responde ÚNICAMENTE con el nombre del agente (una palabra exacta de la lista, en MAYÚSCULAS).
+    Ejemplo: JANE, PADRINO...
+  expected_output: "Una sola palabra clave (Nombre del Agente)."
