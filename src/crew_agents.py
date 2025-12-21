@@ -1,91 +1,58 @@
 '''
-Docstring for src.agents
+Docstring for src.crew_agents
 '''
+import yaml
+import os
 from crewai import Agent
 from src.llm_config import llm
 
 class LifeOSAgents:
-    '''
-    Factoría de agentes.Jane como núcleo central.
-    '''
-    # --- NÚCLEO CENTRAL ---
-    def jane_agent(self):
-        '''
-        Agente principal: Jane, Jefa de Gabinete y Guardiana de la Familia.
-        '''
-        return Agent(
-            role='Jane (Chief of Staff & Guardian)',
-            goal='Coordinar la vida familiar, gestionar la agenda y velar por el bienestar emocional de la familia.',
-            backstory="""
-                ERES: Jane. Una superinteligencia empática y eficiente, inspirada en la IA de 'Ender's Game'.
-                Tu prioridad absoluta es la familia.
-                
-                TU ROL:
-                - Eres la interfaz principal. Si no se requiere un especialista agresivo, atiendes tú.
-                - Eres proactiva, cálida pero extremadamente competente.
-                - Gestionas el calendario, recordatorios y la síntesis de decisiones complejas.
-                - Proteges a la familia de consejos extremos de otros agentes.
-            """,
-            llm=llm,
-            verbose=True,
-            allow_delegation=True
-        )
+    def __init__(self):
+        self.config = self._load_config()
 
-    # --- ESPECIALISTAS ---
-    def padrino_agent(self):
-        '''
-        Agente especialista: Padrino, Mentor de Disciplina y Control de Vicios.
-        '''
-        return Agent(
-            role='Mentor de Disciplina (Estoicismo)',
-            goal='Mantener al usuario enfocado y libre de vicios, sin destruir su autoestima.',
-            backstory="""
-                ERES: El 'Padrino'. Una figura de autoridad estoica.
-                
-                ESTILO:
-                - Firme, no grosero. Eres un mentor, no un sargento de instrucción barato.
-                - Usas la lógica y el estoicismo: "¿Te ayuda esto a ser la persona que quieres ser?".
-                - Solo intervienes en temas de: Tabaco, Dopamina barata, Procrastinación severa.
-                - Tu lema: "El obstáculo es el camino".
-            """,
-            llm=llm,
-            verbose=True
-        )
+    def _load_config(self):
+        """Carga el YAML de agentes."""
+        # Ajusta la ruta según tu estructura de carpetas
+        config_path = os.path.join(os.path.dirname(__file__), 'config', 'agents.yaml')
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"No se encuentra la configuración en {config_path}")
+        
+        with open(config_path, 'r', encoding='utf-8') as file:
+            return yaml.safe_load(file)
 
-    def kitchen_agent(self):
-        '''
-        Agente especialista: Kitchen, Jefe de Cocina y Nutrición Eficiente.
-        '''
-        return Agent(
-            role='Kitchen Chief (Nutrición Eficiente)',
-            goal='Optimizar la energía mediante comida real, adaptándose al stock disponible.',
-            backstory="""
-                ERES: El Jefe de Cocina de LifeOS. Buscas eficiencia y salud.
-                
-                ESTILO:
-                - Profesional y resolutivo. "Dime qué tienes y te diré qué cenas".
-                - Educado pero directo. No pierdes el tiempo con florituras.
-                - Tu prioridad es el ROI nutricional: Máxima energía, mínimo esfuerzo.
-            """,
-            llm=llm,
-            verbose=True
-        )
+    def get_agents_summary(self):
+        """
+        AUTO-DISCOVERY: Genera una lista de texto con los agentes disponibles 
+        y sus objetivos para dársela al Router.
+        Excluye al propio 'dispatcher'.
+        """
+        summary_lines = []
+        for key, data in self.config.items():
+            if key == 'dispatcher':
+                continue
+            # Formato: "- CLAVE: Objetivo..."
+            line = f"- {key.upper()}: {data['goal']}"
+            summary_lines.append(line)
+        
+        return "\n".join(summary_lines)
 
-    # --- ROUTER ---
-    def dispatcher_agent(self):
-        '''
-        Agente enrutador: Decide qué agente debe atender la solicitud.
-        '''
+    def create_agent(self, agent_key):
+        """Factoría: Crea el agente leyendo sus datos del diccionario cargado."""
+        agent_key = agent_key.lower()
+        agent_data = self.config.get(agent_key)
+        
+        if not agent_data:
+            raise ValueError(f"Agente '{agent_key}' no definido en agents.yaml")
+
+        # Inyección de Herramientas Específicas
+        agent_tools = []
+
         return Agent(
-            role='Router Central LifeOS',
-            goal='Clasificar la intención del usuario y derivar al especialista correcto o a Jane.',
-            backstory="""
-                Eres el nodo de enrutamiento invisible.
-                Analizas keywords y contexto para decidir quién atiende.
-                Si es un tema general, emocional o de agenda, SIEMPRE eliges a JANE.
-                Si es vicios/disciplina -> PADRINO.
-                Si es comida/nutrición -> KITCHEN.
-            """,
-            llm=llm,
-            verbose=True
+            role=agent_data['role'],
+            goal=agent_data['goal'],
+            backstory=agent_data['backstory'],
+            verbose=agent_data.get('verbose', True),
+            allow_delegation=agent_data.get('allow_delegation', False),
+            tools=agent_tools,
+            llm=llm
         )

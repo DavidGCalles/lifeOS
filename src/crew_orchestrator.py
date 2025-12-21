@@ -6,20 +6,24 @@ from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
 
-
 class CrewOrchestrator:
-    '''Orquestador que maneja la lógica de enrutamiento y ejecución de Crews para LifeOS.'''
     def __init__(self):
         self.agents = LifeOSAgents()
         self.tasks = LifeOSTasks()
 
     def route_request(self, user_message):
         """
-        Usa un Crew de un solo agente para decidir quién atiende la petición.
+        Ejecuta el Router con la lista de agentes dinámica.
         """
-        dispatcher = self.agents.dispatcher_agent()
-        routing_task = self.tasks.router_task(dispatcher, user_message)
-        # Crew ligera para clasificación rápida
+        # 1. Crear el agente Router
+        dispatcher = self.agents.create_agent('dispatcher')
+        
+        # 2. OBTENER EL MENÚ DINÁMICO (Auto-Discovery)
+        options_text = self.agents.get_agents_summary()
+        
+        # 3. Crear la tarea inyectando el menú
+        routing_task = self.tasks.router_task(dispatcher, user_message, options_text)
+        
         routing_crew = Crew(
             agents=[dispatcher],
             tasks=[routing_task],
@@ -30,25 +34,23 @@ class CrewOrchestrator:
 
     def execute_request(self, user_message, target_agent_key):
         """
-        Ejecuta el Crew del agente seleccionado.
+        Ejecuta al agente seleccionado.
         """
-        active_agents = []
-        # Selector de Agentes
-        if target_agent_key == 'PADRINO':
-            active_agents.append(self.agents.padrino_agent())
-        elif target_agent_key == 'KITCHEN':
-            active_agents.append(self.agents.kitchen_agent())
-        elif target_agent_key == 'JANE':
-            active_agents.append(self.agents.jane_agent())
-        else:
-            # Fallback seguro: Ante la duda, Jane toma el mando.
-            print(f"ℹ Destino '{target_agent_key}' no reconocido. Derivando a Jane.")
-            active_agents.append(self.agents.jane_agent())
+        # target_agent_key viene en MAYÚSCULAS desde el Router (ej: "PADRINO")
+        # Lo pasamos a minúsculas para buscar en el YAML
+        yaml_key = target_agent_key.lower()
+        
+        print(f"🚀 Orquestador: Activando agente '{yaml_key}'...")
 
-        # Construcción y ejecución del Crew
-        agent = active_agents[0]
+        try:
+            agent = self.agents.create_agent(yaml_key)
+        except ValueError:
+            print(f"⚠️ Agente '{yaml_key}' no encontrado. Fallback a JANE.")
+            agent = self.agents.create_agent('jane')
+
         task1 = self.tasks.analysis_task(agent, user_message)
         task2 = self.tasks.response_task(agent)
+        
         execution_crew = Crew(
             agents=[agent],
             tasks=[task1, task2],
