@@ -3,6 +3,8 @@ python-telegram-bot
 crewai
 crewai-tools
 openai
+duckduckgo-search
+pytz
 
 
 #Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bucle con crewai-tools
