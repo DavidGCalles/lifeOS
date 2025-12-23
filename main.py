@@ -1,6 +1,7 @@
 import logging
 import asyncio
 from telegram import Update
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from src.config import load_credentials
 # Importamos el NUEVO orquestador basado en CrewAI
@@ -9,6 +10,7 @@ from src.crew_orchestrator import CrewOrchestrator
 # Configurar logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Reducir verbosidad de httpx
 # --- INICIALIZACIÓN ---
 TELEGRAM_TOKEN = load_credentials() # Ya no pedimos la key de Gemini
 
@@ -68,12 +70,23 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode='Markdown'
         )
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Captura errores de red y otros fallos sin romper el loop."""
+    
+    # Si es un error de red transitorio, solo lo logueamos como warning y seguimos
+    if isinstance(context.error, (NetworkError, TimedOut)):
+        logging.warning(f"♻️ Hipoo de conexión con Telegram: {context.error}. Reintentando internamente...")
+        return
+
+    # Si es otro tipo de error (bugs de código), lo gritamos
+    logging.error(f"⚠️ Excepción no controlada:", exc_info=context.error)
+
 def main():
     """Loop principal de Telegram."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), chat_logic))
-    
+    app.add_error_handler(error_handler)
     print(">>> 🚀 LifeOS (CrewAI Edition) ESCUCHANDO...")
     app.run_polling()
 
