@@ -5,6 +5,7 @@ Coordina la ejecución de agentes y tareas según la solicitud del usuario.
 from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
+from src.utils.session_manager import SessionManager
 
 class CrewOrchestrator:
     def __init__(self):
@@ -32,7 +33,7 @@ class CrewOrchestrator:
         decision = routing_crew.kickoff()
         return str(decision).strip().upper()
 
-    def execute_request(self, user_message, target_agent_key):
+    def execute_request(self, user_message, target_agent_key, chat_id=None):
         """
         Ejecuta al agente seleccionado.
         """
@@ -48,7 +49,16 @@ class CrewOrchestrator:
             print(f"⚠️ Agente '{yaml_key}' no encontrado. Fallback a JANE.")
             agent = self.agents.create_agent('jane')
 
-        task1 = self.tasks.analysis_task(agent, user_message)
+        # --- LÓGICA DE INYECCIÓN DE MEMORIA ---
+        full_message = user_message
+        if chat_id:
+            context_history = SessionManager.get_context(chat_id)
+            if context_history:
+                print(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
+                # Prependemos el historial al mensaje actual
+                full_message = f"{context_history}\n\nUser Current Request: {user_message}"
+
+        task1 = self.tasks.analysis_task(agent, full_message)
         task2 = self.tasks.response_task(agent)
         
         execution_crew = Crew(

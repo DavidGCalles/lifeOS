@@ -5,16 +5,15 @@ from telegram.error import NetworkError, TimedOut
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from src.config import load_credentials
 # Importamos el NUEVO orquestador basado en CrewAI
-from src.crew_orchestrator import CrewOrchestrator 
+from src.crew_orchestrator import CrewOrchestrator
+from src.utils.session_manager import SessionManager
 
 # Configurar logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
 logging.getLogger("httpx").setLevel(logging.WARNING)  # Reducir verbosidad de httpx
-# --- INICIALIZACIÓN ---
-TELEGRAM_TOKEN = load_credentials() # Ya no pedimos la key de Gemini
 
-# Instanciamos el orquestador de Crews (se conecta a LiteLLM automáticamente por tu config)
+# --- INICIALIZACIÓN ---
+TELEGRAM_TOKEN = load_credentials()
 orchestrator = CrewOrchestrator()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -50,7 +49,14 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # 3. FASE 2: EJECUCIÓN (Specialist Agent)
         # Lanzamos el Crew específico
-        respuesta = await asyncio.to_thread(orchestrator.execute_request, user_text, target_agent)
+        respuesta = await asyncio.to_thread(orchestrator.execute_request, user_text, target_agent, chat_id)
+
+        # FASE 3: PERSISTENCIA (Guardamos la memoria)
+        # ---------------------------------------------------------
+        # Convertimos respuesta a string puro por si crewai devuelve objeto
+        respuesta_str = str(respuesta)
+        SessionManager.save_interaction(chat_id, user_text, respuesta_str)
+        # ---------------------------------------------------------
 
         # 4. Respuesta al usuario
         # Formateamos un poco para saber quién habla
