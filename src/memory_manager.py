@@ -106,6 +106,16 @@ class VectorMemoryManager:
             print(f"❌ Error searching memory: {e}")
             return []
 
+    def delete_memory(self, memory_id: str):
+        """
+        Hard delete of a memory item by ID.
+        """
+        try:
+            VectorMemoryManager._collection.delete(ids=[memory_id])
+            print(f"🗑️ Memory {memory_id} deleted.")
+        except Exception as e:
+            print(f"❌ Error deleting memory {memory_id}: {e}")
+            raise e
     def get_stats(self):
         """Debug helper"""
         return {
