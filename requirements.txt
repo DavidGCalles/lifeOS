@@ -5,6 +5,7 @@ crewai-tools
 openai
 duckduckgo-search
 pytz
+chromadb
 
 
 #Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bucle con crewai-tools
