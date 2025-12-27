@@ -10,6 +10,7 @@ from src.schemas.memory import (
     MemorySource
 )
 from src.memory_manager import VectorMemoryManager
+from src.identity_manager import UserContext
 
 # --- INPUT SCHEMAS ---
 
@@ -39,8 +40,16 @@ class RememberTool(BaseTool):
         "Requires categorizing the memory by domain and type."
     )
     args_schema: type[BaseModel] = RememberInput
+    # Estado interno para guardar quién está llamando a la tool
+    _current_user: UserContext | None = None
+
+    def set_context(self, user: UserContext):
+        """Inyecta el usuario actual antes de ejecutar la tool."""
+        self._current_user = user
 
     def _run(self, content: str, domain: str, type: str, tags: str | None = None) -> str:
+        # Determinamos el autor
+        author_name = self._current_user.name if self._current_user else "unknown_system"
         try:
             manager = VectorMemoryManager()
             
@@ -54,7 +63,7 @@ class RememberTool(BaseTool):
                     source=MemorySource.AGENT_REFLECTION, 
                     context_tags=tags
                 ),
-                created_by="jane" 
+                created_by=author_name 
             )
             
             mem_id = manager.add_memory(memory)
