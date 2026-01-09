@@ -6,9 +6,10 @@ openai
 duckduckgo-search
 pytz
 chromadb
+google-cloud-firestore
 
 
-#Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bucle con crewai-tools
+#Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bule con crewai-tools
 litellm
 fastapi
 uvicorn

@@ -21,7 +21,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)  # Reducir verbosidad de ht
 
 # --- INICIALIZACIÓN ---
 TELEGRAM_TOKEN = load_credentials()
-orchestrator = CrewOrchestrator()
+# --- Gestor de Sesión ---
+# El factory devolverá la instancia correcta (JSON o Firestore)
+session_manager = SessionManager()
+orchestrator = CrewOrchestrator(session_manager=session_manager)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Saludo inicial."""
@@ -86,7 +89,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # Guardamos el turno para la "memoria de pez" (SessionManager)
         # Esto permite mantener el hilo de la conversación inmediata
         respuesta_str = str(respuesta)
-        SessionManager.save_interaction(chat_id, user_text, respuesta_str)
+        session_manager.save_interaction(chat_id, user_text, respuesta_str)
 
         # 4. Respuesta al usuario
         mensaje_final = f"🤖 *[{target_agent}]*\n\n{respuesta}"
