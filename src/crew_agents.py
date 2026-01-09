@@ -51,7 +51,11 @@ class LifeOSAgents:
             for tool_name in requested_tools:
                 tool_instance = TOOL_MAPPING.get(tool_name)
                 if tool_instance:
-                    agent_tools.append(tool_instance)
+                    # Si es una lista (un "Kit"), la desempaquetamos
+                    if isinstance(tool_instance, list):
+                        agent_tools.extend(tool_instance)
+                    else:
+                        agent_tools.append(tool_instance)
                 else:
                     print(f"   ⚠️  WARN: Herramienta '{tool_name}' no existe en el catálogo.")
 
