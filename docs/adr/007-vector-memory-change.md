@@ -1,4 +1,4 @@
-# ADR-003: Standardization on Qdrant and Removal of Multi-Engine Support
+# ADR-007: Standardization on Qdrant and Removal of Multi-Engine Support
 
 * **Status:** Accepted
 * **Date:** 2026-01-09
@@ -6,7 +6,7 @@
 
 ## Context and Problem Statement
 
-We are transitioning our Vector Search infrastructure to **Qdrant** (as per ADR-001). Currently, parts of the codebase or proof-of-concept implementations rely on **ChromaDB**.
+We are transitioning our Vector Search infrastructure to **Qdrant**. Currently, parts of the codebase or proof-of-concept implementations rely on **ChromaDB**.
 
 A proposal was made to implement a `VectorMemoryFactory` pattern to support dual execution: using ChromaDB (in-memory) for local development and Qdrant for production environments.
 
