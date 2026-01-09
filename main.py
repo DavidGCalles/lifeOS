@@ -3,6 +3,8 @@ LifeOS v2 - CrewAI Edition
 '''
 import logging
 import asyncio
+import os
+import sys
 from telegram import Update
 from telegram.error import NetworkError, TimedOut
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
@@ -19,12 +21,16 @@ from src.tools import TOOL_MAPPING
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)  # Reducir verbosidad de httpx
 
-# --- INICIALIZACIÓN ---
+# --- ENVIRONMENT & BOT CONFIGURATION ---
 TELEGRAM_TOKEN = load_credentials()
-# --- Gestor de Sesión ---
-# El factory devolverá la instancia correcta (JSON o Firestore)
+RUN_MODE = os.getenv('RUN_MODE', 'polling')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL') # Render.com, etc.
+WEBHOOK_PORT = int(os.getenv('PORT', '8443'))
+
+# --- SERVICE INITIALIZATION ---
 session_manager = SessionManager()
 orchestrator = CrewOrchestrator(session_manager=session_manager)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Saludo inicial."""
@@ -110,20 +116,36 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Captura errores de red y otros fallos sin romper el loop."""
     # Si es un error de red transitorio, solo lo logueamos como warning y seguimos
-    if isinstance(context.error, (NetworkError, TimedOut)):
-        logging.warning("♻️ Hipo de conexión con Telegram: %s. Reintentando internamente...", context.error)
-        return
 
-    # Si es otro tipo de error (bugs de código)
-    logging.error("⚠️ Excepción no controlada:", exc_info=context.error)
-def main():
+async def main():
     """Loop principal de Telegram."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), chat_logic))
     app.add_error_handler(error_handler)
-    print(">>> 🚀 LifeOS (CrewAI Edition) ESCUCHANDO...")
-    app.run_polling()
+    print("🤖 LifeOS v2 Bot iniciando.")
+    if RUN_MODE == 'WEBHOOK':
+        if not WEBHOOK_URL:
+            logging.error("❌ FATAL: RUN_MODE=webhook pero PUBLIC_URL no está definida.")
+            sys.exit(1)
+        
+        logging.info(f"🚀 Iniciando en modo WEBHOOK. Escuchando en el puerto {WEBHOOK_PORT}")
+        logging.info(f"   - URL Pública: {WEBHOOK_URL}")
+        
+        await app.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
+        
+        # El webserver de la librería PTB es muy básico, ideal para PaaS.
+        await app.run_webhook(
+            listen="0.0.0.0",
+            port=WEBHOOK_PORT,
+            webhook_url=WEBHOOK_URL
+        )
+    else:
+        logging.info("🚀 Iniciando en modo POLLING.")
+        # Elimina cualquier webhook previo para evitar conflictos
+        await app.bot.delete_webhook()
+        await app.run_polling()
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
