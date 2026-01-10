@@ -113,11 +113,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode='Markdown'
         )
 
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Captura errores de red y otros fallos sin romper el loop."""
     # Si es un error de red transitorio, solo lo logueamos como warning y seguimos
 
-async def main():
+def main():
     """Loop principal de Telegram."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
@@ -132,20 +132,17 @@ async def main():
         logging.info(f"🚀 Iniciando en modo WEBHOOK. Escuchando en el puerto {WEBHOOK_PORT}")
         logging.info(f"   - URL Pública: {WEBHOOK_URL}")
         
-        await app.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
-        
-        # El webserver de la librería PTB es muy básico, ideal para PaaS.
-        await app.run_webhook(
+        # El método run_webhook se encarga de configurar el webhook automáticamente.
+        app.run_webhook(
             listen="0.0.0.0",
             port=WEBHOOK_PORT,
-            webhook_url=WEBHOOK_URL
+            webhook_url=f"{WEBHOOK_URL}/telegram"
         )
     else:
         logging.info("🚀 Iniciando en modo POLLING.")
-        # Elimina cualquier webhook previo para evitar conflictos
-        await app.bot.delete_webhook()
-        await app.run_polling()
+        # El método run_polling se encarga de eliminar cualquier webhook previo.
+        app.run_polling()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
