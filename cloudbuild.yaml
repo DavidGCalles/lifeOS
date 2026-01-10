@@ -63,8 +63,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated' # Cuidado aquí 
-      # Aquí deberías inyectar las keys de OpenAI/Anthropic como secretos
-      # - '--set-secrets=OPENAI_API_KEY=projects/$PROJECT_ID/secrets/openai_key/versions/latest'
+      - '--set-secrets=GEMINI_API_KEY=projects/$PROJECT_ID/secrets/GEMINI_API_KEY/versions/latest'
     id: 'deploy-litellm'
     waitFor: ['push-litellm']
 
