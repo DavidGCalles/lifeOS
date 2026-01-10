@@ -83,7 +83,10 @@ steps:
       - '--allow-unauthenticated'
       - '--set-env-vars=RUN_MODE=WEBHOOK'
       - '--set-env-vars=WEBHOOK_URL=${_WEBHOOK_URL}'
-      - '--set-env-vars=LITELLM_URL=${_LITELLM_URL}' 
+      - '--set-env-vars=LITELLM_URL=${_LITELLM_URL}'
+      - '--set-env-vars=CREWAI_TRACING_ENABLED=false'
+      - '--set-env-vars=USE_FIRESTORE=FALSE'
+      - '--set-secrets=TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest'
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
