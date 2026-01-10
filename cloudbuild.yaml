@@ -81,6 +81,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--set-env-vars=RUN_MODE=WEBHOOK,WEBHOOK_URL=${_WEBHOOK_URL}'
       # IMPORTANTE: Tu backend necesita saber dónde vive LiteLLM.
       # La URL de Cloud Run es determinista, pero la primera vez tendrás que
       # ponerla manualmente o usar una variable de entorno si ya la conoces.
@@ -90,6 +91,7 @@ steps:
 
 substitutions:
     _REGION: 'europe-west1'
+    _WEBHOOK_URL: ''
 
 images:
   - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
