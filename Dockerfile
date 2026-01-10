@@ -13,5 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar el directorio src completo, manteniendo la estructura
 COPY src ./src
 
+EXPOSE 8080
+
 # Comando para ejecutar la aplicación, especificando la ruta correcta
 CMD ["python", "main.py"]
