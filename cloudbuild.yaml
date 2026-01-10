@@ -96,3 +96,6 @@ images:
   - 'gcr.io/$PROJECT_ID/lifeos-backend:latest'
   - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/lifeos-litellm:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
