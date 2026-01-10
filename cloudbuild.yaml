@@ -83,13 +83,14 @@ steps:
       - '--allow-unauthenticated'
       - '--set-env-vars=RUN_MODE=WEBHOOK
       - '--set-env-vars=WEBHOOK_URL=${_WEBHOOK_URL}'
-      - '--set-env-vars=LITELLM_BASE_URL=https://lifeos-litellm-319986340006.europe-west1.run.app' 
+      - '--set-env-vars=LITELLM_URL=${_LITELLM_URL}' 
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
 substitutions:
     _REGION: 'europe-west1'
     _WEBHOOK_URL: ''
+    _LITELLM_URL: 'https://lifeos-litellm-319986340006.europe-west1.run.app'
 
 images:
   - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
