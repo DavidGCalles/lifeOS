@@ -24,8 +24,8 @@ logging.getLogger("httpx").setLevel(logging.WARNING)  # Reducir verbosidad de ht
 # --- ENVIRONMENT & BOT CONFIGURATION ---
 TELEGRAM_TOKEN = load_credentials()
 RUN_MODE = os.getenv('RUN_MODE', 'polling')
-WEBHOOK_URL = os.getenv('PORT', '8080') # Render.com, etc.
-WEBHOOK_PORT = int(os.getenv('PORT', '8443'))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+WEBHOOK_PORT = int(os.getenv('PORT', '8080'))
 
 # --- SERVICE INITIALIZATION ---
 session_manager = SessionManager()
