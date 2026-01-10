@@ -81,7 +81,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
-      - '--set-env-vars=RUN_MODE=WEBHOOK
+      - '--set-env-vars=RUN_MODE=WEBHOOK'
       - '--set-env-vars=WEBHOOK_URL=${_WEBHOOK_URL}'
       - '--set-env-vars=LITELLM_URL=${_LITELLM_URL}' 
     id: 'deploy-backend'
