@@ -10,10 +10,11 @@ ENV PYTHONUNBUFFERED=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el directorio src completo, manteniendo la estructura
-COPY src ./src
+# En vez de copiar solo src, copiamos TODO el contexto actual (respetando el .dockerignore)
+COPY . .
+# -------------------
 
 EXPOSE 8080
 
-# Comando para ejecutar la aplicación, especificando la ruta correcta
+# Comando para ejecutar la aplicación
 CMD ["python", "main.py"]
