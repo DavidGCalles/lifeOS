@@ -81,11 +81,9 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
-      - '--set-env-vars=RUN_MODE=WEBHOOK,WEBHOOK_URL=${_WEBHOOK_URL}'
-      # IMPORTANTE: Tu backend necesita saber dónde vive LiteLLM.
-      # La URL de Cloud Run es determinista, pero la primera vez tendrás que
-      # ponerla manualmente o usar una variable de entorno si ya la conoces.
-      # - '--set-env-vars=LITELLM_BASE_URL=https://lifeos-litellm-xyz-uc.a.run.app' 
+      - '--set-env-vars=RUN_MODE=WEBHOOK
+      - '--set-env-vars=WEBHOOK_URL=${_WEBHOOK_URL}'
+      - '--set-env-vars=LITELLM_BASE_URL=https://lifeos-litellm-319986340006.europe-west1.run.app' 
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
