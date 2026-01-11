@@ -4,6 +4,7 @@
 # Si creas claves privadas para google cloud, etc.
 *.json
 src/config/users.json
+src/config/credentials.json
 !src/  # Excepción: no ignorar JSONs que sean parte del código fuente real
 
 # --- 🐍 PYTHON BASURA (Compilados y caché) ---
