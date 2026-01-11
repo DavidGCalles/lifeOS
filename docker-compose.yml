@@ -11,6 +11,7 @@ services:
       - PYTHONUNBUFFERED=1
       # Le decimos a tu app dónde está el cerebro ahora
       - OPENAI_API_KEY=sk-fake-key-bypass
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/src/config/credentials.json
     volumes:
       - .:/app
 

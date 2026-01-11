@@ -80,6 +80,17 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         logging.info("Destino decidido: %s", target_agent)
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
+        SessionManager.add_message(
+            chat_id=chat_id,
+            message_data={
+                "role": current_user.role.value,
+                "content": user_text,
+                "user_id": current_user.telegram_id,
+                "name": current_user.name,
+                "message_id": update.message.message_id 
+            }
+        )
+
         # FASE 2: EJECUCIÓN (Specialist Agent)
         # Lanzamos el Crew específico inyectando Identidad + Memoria
         respuesta = await asyncio.to_thread(
@@ -94,14 +105,24 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # Guardamos el turno para la "memoria de pez" (SessionManager)
         # Esto permite mantener el hilo de la conversación inmediata
         respuesta_str = str(respuesta)
-        session_manager.save_interaction(chat_id, user_text, respuesta_str)
 
         # 4. Respuesta al usuario
-        mensaje_final = f"🤖 *[{target_agent}]*\n\n{respuesta}"
-        await context.bot.send_message(
+        mensaje_final = f"🤖 *[{target_agent}]*\n\n{respuesta_str}"
+        sent_message = await context.bot.send_message(
             chat_id=chat_id,
             text=mensaje_final,
             parse_mode='Markdown'
+        )
+
+        SessionManager.add_message(
+            chat_id=chat_id,
+            message_data={
+                "role": "assistant",
+                "content": respuesta_str,
+                "user_id": context.bot.id, # ID del propio Bot
+                "name": "LifeOS",
+                "message_id": sent_message.message_id # <--- CLAVE PARA CONTEXTO
+            }
         )
 
     except Exception as e:

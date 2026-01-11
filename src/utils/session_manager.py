@@ -1,179 +1,118 @@
-import json
 import os
-import sys
-from abc import ABC, abstractmethod
 from typing import Any
-
+from google.cloud import firestore
 from dotenv import load_dotenv
 
-# Cargar variables de entorno desde .env
 load_dotenv()
 
-# --- Constants ---
-DATA_DIR = os.path.join(os.getcwd(), 'data')
-SESSION_FILE = os.path.join(DATA_DIR, 'sessions.json')
-MAX_HISTORY = 10
-
-# --- Environment Configuration ---
-USE_FIRESTORE = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
-FIRESTORE_DB_NAME = os.getenv('FIRESTORE_DB_NAME')
-
-# --- Firestore Client Initialization ---
-db = None
-if USE_FIRESTORE:
-    try:
-        if USE_FIRESTORE and FIRESTORE_DB_NAME is None:
-            print("⚠️  WARNING: USE_FIRESTORE is set to True but FIRESTORE_DB_NAME is not defined.")
-            print("Falling back to default database.")
-        import google.cloud.firestore
-        # This will use the GOOGLE_APPLICATION_CREDENTIALS environment variable
-        db = google.cloud.firestore.Client(database=FIRESTORE_DB_NAME)
-        print("✅ Cliente de Firestore inicializado correctamente.")
-    except ImportError:
-        print("❌ Error: La biblioteca 'google-cloud-firestore' no está instalada.")
-        print("Por favor, ejecute: pip install google-cloud-firestore")
-        sys.exit(1)
-    except Exception as e:
-        print(f"❌ Error al inicializar Firestore: {e}")
-        print("Asegúrese de que GOOGLE_APPLICATION_CREDENTIALS esté configurado correctamente.")
-        # Fail gracefully in local, but exit if in prod-like environment
-        if os.getenv('CI'): # Simple check for a prod-like environment
-            sys.exit(1)
-
-# --- Base Session Manager ---
-class BaseSessionManager(ABC):
+class SessionManager:
     """
-    Clase base abstracta para los gestores de sesión.
-    Define la interfaz que deben seguir todos los gestores.
+    Gestor de sesiones en Firestore (Python 3.12+).
+    Estructura: sessions/{chat_id}/messages/{message_id}
     """
-    @abstractmethod
-    def get_context(self, chat_id: int) -> str:
-        ...
+    _firestore_client: firestore.Client | None = None
+    _USE_FIRESTORE: bool = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
+    _DB_NAME: str | None = os.getenv('FIRESTORE_DB_NAME')
 
-    @abstractmethod
-    def save_interaction(self, chat_id: int, user_msg: str, ai_msg: str):
-        ...
+    @classmethod
+    def _get_db(cls) -> firestore.Client | None:
+        """Inicialización Lazy del cliente Firestore."""
+        if cls._firestore_client is None and cls._USE_FIRESTORE:
+            try:
+                # Soporte para bases de datos nombradas (no default)
+                if cls._DB_NAME:
+                    cls._firestore_client = firestore.Client(database=cls._DB_NAME)
+                else:
+                    cls._firestore_client = firestore.Client()
+            except Exception as e:
+                print(f"❌ SESSION ERROR: No se pudo conectar a Firestore: {e}")
+                cls._firestore_client = None
+        return cls._firestore_client
 
-# --- JSON File Session Manager (Local) ---
-class JSONSessionManager(BaseSessionManager):
-    """
-    Gestor de persistencia para el contexto conversacional inmediato usando un archivo JSON.
-    """
-    def _ensure_data_dir(self):
-        if not os.path.exists(DATA_DIR):
-            os.makedirs(DATA_DIR)
+    @classmethod
+    def add_message(cls, chat_id: int | str, message_data: dict[str, Any]) -> None:
+        """
+        Guarda un mensaje en la subcolección 'messages'.
+        
+        Args:
+            chat_id: ID del chat (positivo=privado, negativo=grupo).
+            message_data: Diccionario con 'role', 'content', 'user_id', 'name', 'message_id'.
+        """
+        db = cls._get_db()
+        if not db:
+            return
 
-    def _load_sessions(self) -> dict[str, Any]:
-        self._ensure_data_dir()
-        if not os.path.exists(SESSION_FILE):
-            return {}
+        cid = str(chat_id)
+        
+        # 1. Actualizar metadatos de la sesión padre (Upsert)
+        # Se asume que 'sessions' es la colección raíz
+        session_ref = db.collection('sessions').document(cid)
+        session_ref.set({
+            'last_activity': firestore.SERVER_TIMESTAMP,
+            'type': 'group' if cid.startswith('-') else 'private' 
+        }, merge=True)
+
+        # 2. Preparar el payload del mensaje
+        # Convertimos message_id a string para usarlo como ID de documento
+        msg_id_raw = message_data.get('message_id', '')
+        msg_id_str = str(msg_id_raw)
+        
+        doc_data = {
+            'message_id': msg_id_raw,  # Guardamos el valor original (int o str)
+            'role': message_data.get('role', 'unknown'),
+            'content': message_data.get('content', ''),
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'sender_id': str(message_data.get('user_id', '')),
+            'name': message_data.get('name', 'Unknown')
+        }
+
         try:
-            with open(SESSION_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return {}
-
-    def _save_sessions(self, data: dict[str, Any]):
-        self._ensure_data_dir()
-        temp_file = f"{SESSION_FILE}.tmp"
-        try:
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            os.replace(temp_file, SESSION_FILE)
+            # Usamos el ID de Telegram como ID del documento para idempotencia
+            if msg_id_str:
+                session_ref.collection('messages').document(msg_id_str).set(doc_data)
+            else:
+                # Fallback seguro si no hay ID (no debería ocurrir en Telegram)
+                session_ref.collection('messages').add(doc_data)
         except Exception as e:
-            print(f"❌ Error guardando sesión en JSON: {e}")
+            print(f"⚠️ Error guardando mensaje en Firestore: {e}")
 
-    def get_context(self, chat_id: int) -> str:
-        data = self._load_sessions()
-        history = data.get(str(chat_id), [])
-        return self._format_context(history)
+    @classmethod
+    def get_context(cls, chat_id: int | str, limit: int = 15) -> list[dict[str, Any]]:
+        """
+        Recupera el historial reciente formateado para el LLM.
+        Devuelve lista en orden cronológico (Oldest -> Newest).
+        """
+        db = cls._get_db()
+        if not db:
+            return []
 
-    def save_interaction(self, chat_id: int, user_msg: str, ai_msg: str):
-        data = self._load_sessions()
-        chat_key = str(chat_id)
-        if chat_key not in data:
-            data[chat_key] = []
-        
-        data[chat_key].append({"user": user_msg, "ai": ai_msg})
-        
-        if len(data[chat_key]) > MAX_HISTORY:
-            data[chat_key] = data[chat_key][-MAX_HISTORY:]
-        
-        self._save_sessions(data)
+        cid = str(chat_id)
+        messages: list[dict[str, Any]] = []
 
-    def _format_context(self, history: list[dict[str, str]]) -> str:
-        if not history:
-            return ""
-        context_str = "\n--- 📜 CONTEXTO DE LA CONVERSACIÓN PREVIA ---\n"
-        for item in history:
-            context_str += f"User: {item.get('user', '')}\n"
-            context_str += f"AI: {item.get('ai', '')}\n"
-        context_str += "--- FIN DEL CONTEXTO ---\n"
-        return context_str
-
-# --- Firestore Session Manager (Production) ---
-class FirestoreSessionManager(BaseSessionManager):
-    """
-    Gestor de persistencia usando Google Cloud Firestore.
-    """
-    def __init__(self, firestore_client):
-        if firestore_client is None:
-            raise ValueError("El cliente de Firestore no está inicializado.")
-        self.db = firestore_client
-        self.collection_ref = self.db.collection('sessions')
-
-    def get_context(self, chat_id: int) -> str:
-        doc_ref = self.collection_ref.document(str(chat_id))
-        doc = doc_ref.get()
-        if not doc.exists:
-            return ""
-        
-        data = doc.to_dict()
-        history = data.get('history', [])
-        return self._format_context(history)
-
-    def save_interaction(self, chat_id: int, user_msg: str, ai_msg: str):
-        doc_ref = self.collection_ref.document(str(chat_id))
-        doc = doc_ref.get()
-        
-        history = []
-        if doc.exists:
-            history = doc.to_dict().get('history', [])
-
-        history.append({"user": user_msg, "ai": ai_msg})
-        
-        if len(history) > MAX_HISTORY:
-            history = history[-MAX_HISTORY:]
-        
         try:
-            doc_ref.set({'history': history}, merge=True)
+            # Consulta: Los N más recientes (orden Descendente por tiempo)
+            docs = (
+                db.collection('sessions')
+                .document(cid)
+                .collection('messages')
+                .order_by('timestamp', direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+
+            # Iteramos y formateamos
+            for doc in docs:
+                data = doc.to_dict()
+                messages.append({
+                    "message_id": data.get("message_id"),
+                    "role": data.get("role"),
+                    "name": data.get("name"),
+                    "content": data.get("content")
+                })
+            
+            # Invertimos la lista para que el LLM lea la conversación en orden natural
+            return messages[::-1]
+
         except Exception as e:
-            print(f"❌ Error guardando sesión en Firestore: {e}")
-
-    def _format_context(self, history: list[dict[str, str]]) -> str:
-        if not history:
-            return ""
-        context_str = "\n--- 📜 CONTEXTO DE LA CONVERSACIÓN PREVIA ---\n"
-        for item in history:
-            context_str += f"User: {item.get('user', '')}\n"
-            context_str += f"AI: {item.get('ai', '')}\n"
-        context_str += "--- FIN DEL CONTEXTO ---\n"
-        return context_str
-
-# --- Factory Function ---
-def SessionManager() -> BaseSessionManager:
-    """
-    Factory que devuelve la implementación del gestor de sesión
-    basado en la variable de entorno USE_FIRESTORE.
-    """
-    if USE_FIRESTORE:
-        if db:
-            print("🚀 Usando Firestore para la gestión de sesiones.")
-            return FirestoreSessionManager(firestore_client=db)
-        else:
-            print("⚠️  Firestore está habilitado (USE_FIRESTORE=True) pero falló la inicialización.")
-            print("Fallback a JSON. La persistencia no funcionará en un entorno sin estado.")
-            return JSONSessionManager()
-    else:
-        print("💾 Usando JSON local para la gestión de sesiones.")
-        return JSONSessionManager()
+            print(f"⚠️ Error recuperando contexto: {e}")
+            return []

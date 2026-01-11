@@ -5,20 +5,16 @@ from enum import StrEnum, auto
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-# Cargamos entorno para asegurar que USE_FIRESTORE está disponible
 load_dotenv()
 
-# --- DEFINICIONES DE DOMINIO ---
+# --- DEFINICIONES ---
 
 class UserRole(StrEnum):
-    ADMIN = auto()  # "admin"
-    USER = auto()   # "user"
-    GUEST = auto()  # "guest"
+    ADMIN = auto()
+    USER = auto()
+    GUEST = auto()
 
 class UserContext(BaseModel):
-    """
-    Representa al usuario activo en la sesión actual.
-    """
     telegram_id: str
     name: str
     role: UserRole
@@ -31,9 +27,6 @@ class UserContext(BaseModel):
 # --- MANAGER ---
 
 class IdentityManager:
-    """
-    Gestor de identidad híbrido (Firestore + Local JSON Fallback).
-    """
     _users_db: dict[str, dict] = {}
     _loaded_local: bool = False
     _firestore_client = None
@@ -45,106 +38,100 @@ class IdentityManager:
 
     @classmethod
     def _get_firestore_client(cls):
-        """Inicialización Lazy del cliente conectando a la DB específica."""
+        """Inicializa con logs de diagnóstico."""
         if cls._firestore_client is None and cls._USE_FIRESTORE:
             try:
                 from google.cloud import firestore
                 
-                # Si hay nombre de DB, lo usamos. Si es None, usa '(default)'
+                print(f"🔧 DIAGNOSTICO FIRESTORE:")
+                print(f"   - Variable USE_FIRESTORE: {cls._USE_FIRESTORE}")
+                print(f"   - Variable FIRESTORE_DB_NAME: '{cls._DB_NAME}'")
+                
+                # Inicialización explícita
                 if cls._DB_NAME:
-                    print(f"🔥 IDENTITY: Conectando a base de datos: '{cls._DB_NAME}'...")
                     cls._firestore_client = firestore.Client(database=cls._DB_NAME)
                 else:
-                    print("🔥 IDENTITY: Conectando a base de datos: (default)...")
                     cls._firestore_client = firestore.Client()
+                
+                # Verificación post-conexión
+                print(f"   - Cliente creado. Proyecto: {cls._firestore_client.project}")
+                # Nota: ._database es interno, pero útil para debug
+                try:
+                    print(f"   - Target DB: {cls._firestore_client._database}")
+                except:
+                    pass
                     
-                print("✅ IDENTITY: Cliente Firestore inicializado.")
-            except ImportError:
-                print("❌ ERROR: google-cloud-firestore no instalado.")
             except Exception as e:
-                print(f"❌ IDENTITY ERROR: Fallo al conectar con Firestore: {e}")
+                print(f"❌ CRITICAL ERROR conectando a Firestore: {type(e).__name__}: {e}")
                 cls._firestore_client = None
         return cls._firestore_client
 
     @classmethod
     def _load_local_users(cls) -> None:
-        """Carga el JSON local (Plan B)."""
-        if cls._loaded_local:
-            return
-
+        """Fallback local."""
+        if cls._loaded_local: return
         if not cls._CONFIG_PATH.exists():
-            # Si no hay JSON y falló Firestore, estamos ciegos, pero no rompemos.
+            print(f"⚠️ Local config not found: {cls._CONFIG_PATH}")
             return
-
         try:
             with open(cls._CONFIG_PATH, "r", encoding="utf-8") as f:
                 cls._users_db = json.load(f)
             cls._loaded_local = True
-            print("📂 IDENTITY: Base de datos local (JSON) cargada.")
         except Exception as e:
-            print(f"❌ IDENTITY ERROR: JSON corrupto: {e}")
-            cls._users_db = {}
+            print(f"❌ Local JSON error: {e}")
 
     @classmethod
     def get_user(cls, telegram_id: int | str) -> UserContext:
-        """
-        Recupera el perfil del usuario.
-        Estrategia: Firestore (si activo) -> JSON Local -> Stranger (Guest).
-        """
         tid_str = str(telegram_id)
-        user_data = None
-        source = "Unknown"
-
-        # 1. INTENTO FIRESTORE (Producción)
+        
+        # 1. INTENTO FIRESTORE
         if cls._USE_FIRESTORE:
             db = cls._get_firestore_client()
             if db:
                 try:
-                    # Buscamos en colección 'users', documento = telegram_id
-                    doc = db.collection('users').document(tid_str).get()
+                    # Intento de lectura explícito
+                    doc_ref = db.collection('users').document(tid_str)
+                    print(f"🔍 Buscando en Firestore: {doc_ref.path} ...")
+                    
+                    doc = doc_ref.get()
+                    
                     if doc.exists:
-                        user_data = doc.to_dict()
-                        source = "Firestore"
+                        data = doc.to_dict()
+                        print(f"✅ ENCONTRADO en Firestore: {data.get('name')}")
+                        return UserContext(
+                            telegram_id=tid_str,
+                            name=data.get("name", "Usuario"),
+                            role=UserRole(data.get("role", "guest").lower()),
+                            description=data.get("description")
+                        )
+                    else:
+                        print(f"🚫 NO EXISTE en Firestore el ID: {tid_str}")
                 except Exception as e:
-                    print(f"⚠️ IDENTITY WARNING: Fallo de lectura en nube para {tid_str}: {e}")
+                    # Aquí está la clave: Ver el error real
+                    print(f"❌ EXCEPCION LEYENDO USUARIO: {e}")
 
-        # 2. INTENTO JSON LOCAL (Desarrollo / Fallback)
-        if not user_data:
-            cls._load_local_users()
-            user_data = cls._users_db.get(tid_str)
-            if user_data:
-                source = "Local JSON"
-
-        # 3. RESOLUCIÓN DE IDENTIDAD
-        if user_data:
-            # Normalización de datos para evitar errores si falta algún campo en BBDD
-            role_str = user_data.get("role", "guest").lower()
-            # Mapeo seguro a Enum (si hay basura en la DB, degradamos a GUEST)
-            try:
-                role_enum = UserRole(role_str)
-            except ValueError:
-                role_enum = UserRole.GUEST
-
-            print(f"👤 USER RECOGNIZED [{source}]: {user_data.get('name')} ({role_enum})")
-            
+        # 2. FALLBACK LOCAL
+        cls._load_local_users()
+        data = cls._users_db.get(tid_str)
+        if data:
+            print(f"📂 Encontrado en Local JSON: {data.get('name')}")
             return UserContext(
                 telegram_id=tid_str,
-                name=user_data.get("name", "Usuario"),
-                role=role_enum,
-                description=user_data.get("description", "")
+                name=data.get("name"),
+                role=UserRole(data.get("role", "guest").lower()),
+                description=data.get("description")
             )
 
-        # 4. DESCONOCIDO (GUEST por defecto)
-        print(f"👤 USER UNKNOWN: ID {tid_str}")
+        # 3. STRANGER
+        print(f"⛔ Acceso denegado final para: {tid_str}")
         return UserContext(
             telegram_id=tid_str,
             name="Stranger",
             role=UserRole.GUEST,
-            description="Unauthorized user seeking access."
+            description="Unauthorized"
         )
 
     @classmethod
-    def reload(cls) -> None:
-        """Útil para debug en local sin reiniciar."""
+    def reload(cls):
         cls._loaded_local = False
         cls._load_local_users()
