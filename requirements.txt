@@ -1,5 +1,6 @@
 python-dotenv
 python-telegram-bot
+python-telegram-bot[webhooks]
 crewai
 crewai-tools
 openai
