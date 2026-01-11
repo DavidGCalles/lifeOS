@@ -16,14 +16,18 @@ MAX_HISTORY = 10
 
 # --- Environment Configuration ---
 USE_FIRESTORE = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
+FIRESTORE_DB_NAME = os.getenv('FIRESTORE_DB_NAME')
 
 # --- Firestore Client Initialization ---
 db = None
 if USE_FIRESTORE:
     try:
+        if USE_FIRESTORE and FIRESTORE_DB_NAME is None:
+            print("⚠️  WARNING: USE_FIRESTORE is set to True but FIRESTORE_DB_NAME is not defined.")
+            print("Falling back to default database.")
         import google.cloud.firestore
         # This will use the GOOGLE_APPLICATION_CREDENTIALS environment variable
-        db = google.cloud.firestore.Client()
+        db = google.cloud.firestore.Client(database=FIRESTORE_DB_NAME)
         print("✅ Cliente de Firestore inicializado correctamente.")
     except ImportError:
         print("❌ Error: La biblioteca 'google-cloud-firestore' no está instalada.")
