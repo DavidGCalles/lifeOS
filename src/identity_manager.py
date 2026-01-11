@@ -1,11 +1,17 @@
 import json
 import os
+import logging
 from pathlib import Path
 from enum import StrEnum, auto
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Configuración del logger
+logging.basicConfig(level=os.getenv('LOGGING_LEVEL', 'INFO').upper(),
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # --- DEFINICIONES ---
 
@@ -43,9 +49,9 @@ class IdentityManager:
             try:
                 from google.cloud import firestore
                 
-                print(f"🔧 DIAGNOSTICO FIRESTORE:")
-                print(f"   - Variable USE_FIRESTORE: {cls._USE_FIRESTORE}")
-                print(f"   - Variable FIRESTORE_DB_NAME: '{cls._DB_NAME}'")
+                logger.debug("🔧 DIAGNOSTICO FIRESTORE:")
+                logger.debug(f"   - Variable USE_FIRESTORE: {cls._USE_FIRESTORE}")
+                logger.debug(f"   - Variable FIRESTORE_DB_NAME: '{cls._DB_NAME}'")
                 
                 # Inicialización explícita
                 if cls._DB_NAME:
@@ -54,15 +60,15 @@ class IdentityManager:
                     cls._firestore_client = firestore.Client()
                 
                 # Verificación post-conexión
-                print(f"   - Cliente creado. Proyecto: {cls._firestore_client.project}")
+                logger.debug(f"   - Cliente creado. Proyecto: {cls._firestore_client.project}")
                 # Nota: ._database es interno, pero útil para debug
                 try:
-                    print(f"   - Target DB: {cls._firestore_client._database}")
+                    logger.debug(f"   - Target DB: {cls._firestore_client._database}")
                 except:
                     pass
                     
             except Exception as e:
-                print(f"❌ CRITICAL ERROR conectando a Firestore: {type(e).__name__}: {e}")
+                logger.critical(f"❌ CRITICAL ERROR conectando a Firestore: {type(e).__name__}: {e}")
                 cls._firestore_client = None
         return cls._firestore_client
 
@@ -71,14 +77,14 @@ class IdentityManager:
         """Fallback local."""
         if cls._loaded_local: return
         if not cls._CONFIG_PATH.exists():
-            print(f"⚠️ Local config not found: {cls._CONFIG_PATH}")
+            logger.warning(f"Local config not found: {cls._CONFIG_PATH}")
             return
         try:
             with open(cls._CONFIG_PATH, "r", encoding="utf-8") as f:
                 cls._users_db = json.load(f)
             cls._loaded_local = True
         except Exception as e:
-            print(f"❌ Local JSON error: {e}")
+            logger.error(f"❌ Local JSON error: {e}")
 
     @classmethod
     def get_user(cls, telegram_id: int | str) -> UserContext:
@@ -91,13 +97,13 @@ class IdentityManager:
                 try:
                     # Intento de lectura explícito
                     doc_ref = db.collection('users').document(tid_str)
-                    print(f"🔍 Buscando en Firestore: {doc_ref.path} ...")
+                    logger.debug(f"🔍 Buscando en Firestore: {doc_ref.path} ...")
                     
                     doc = doc_ref.get()
                     
                     if doc.exists:
                         data = doc.to_dict()
-                        print(f"✅ ENCONTRADO en Firestore: {data.get('name')}")
+                        logger.info(f"✅ ENCONTRADO en Firestore: {data.get('name')}")
                         return UserContext(
                             telegram_id=tid_str,
                             name=data.get("name", "Usuario"),
@@ -105,16 +111,16 @@ class IdentityManager:
                             description=data.get("description")
                         )
                     else:
-                        print(f"🚫 NO EXISTE en Firestore el ID: {tid_str}")
+                        logger.warning(f"🚫 NO EXISTE en Firestore el ID: {tid_str}")
                 except Exception as e:
                     # Aquí está la clave: Ver el error real
-                    print(f"❌ EXCEPCION LEYENDO USUARIO: {e}")
+                    logger.error(f"❌ EXCEPCION LEYENDO USUARIO: {e}", exc_info=True)
 
         # 2. FALLBACK LOCAL
         cls._load_local_users()
         data = cls._users_db.get(tid_str)
         if data:
-            print(f"📂 Encontrado en Local JSON: {data.get('name')}")
+            logger.info(f"📂 Encontrado en Local JSON: {data.get('name')}")
             return UserContext(
                 telegram_id=tid_str,
                 name=data.get("name"),
@@ -123,7 +129,7 @@ class IdentityManager:
             )
 
         # 3. STRANGER
-        print(f"⛔ Acceso denegado final para: {tid_str}")
+        logger.warning(f"⛔ Acceso denegado final para: {tid_str}")
         return UserContext(
             telegram_id=tid_str,
             name="Stranger",
@@ -133,5 +139,6 @@ class IdentityManager:
 
     @classmethod
     def reload(cls):
+        logger.info("Reloading local user database...")
         cls._loaded_local = False
         cls._load_local_users()
