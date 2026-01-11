@@ -6,7 +6,6 @@ import asyncio
 import os
 import sys
 from telegram import Update
-from telegram.error import NetworkError, TimedOut
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from src.config import load_credentials
 # Importamos el orquestador
