@@ -51,7 +51,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     # --- 🛡️ CAPA DE IDENTIDAD (MIDDLEWARE) ---
     # 1. Resolvemos quién es el usuario consultando users.json
-    current_user = IdentityManager.get_user(user_id)
+    current_user = await asyncio.to_thread(IdentityManager.get_user, user_id)
     logging.info("👤 User: %s (%s)", current_user.name, current_user.role)
 
     # 2. Inyección de Contexto de usuario en las Tools (Global State)
@@ -80,14 +80,15 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         logging.info("Destino decidido: %s", target_agent)
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        SessionManager.add_message(
-            chat_id=chat_id,
-            message_data={
+        await asyncio.to_thread(
+            SessionManager.add_message,
+            chat_id,
+            {
                 "role": current_user.role.value,
                 "content": user_text,
                 "user_id": current_user.telegram_id,
                 "name": current_user.name,
-                "message_id": update.message.message_id 
+                "message_id": update.message.message_id
             }
         )
 
@@ -114,9 +115,10 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode='Markdown'
         )
 
-        SessionManager.add_message(
-            chat_id=chat_id,
-            message_data={
+        await asyncio.to_thread(
+            SessionManager.add_message,
+            chat_id,
+            {
                 "role": "assistant",
                 "content": respuesta_str,
                 "user_id": context.bot.id, # ID del propio Bot
