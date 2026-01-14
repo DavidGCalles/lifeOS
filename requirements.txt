@@ -1,14 +1,16 @@
 python-dotenv
 python-telegram-bot
+python-telegram-bot[webhooks]
 crewai
 crewai-tools
 openai
 duckduckgo-search
 pytz
-chromadb
+qdrant-client
+google-cloud-firestore
 
 
-#Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bucle con crewai-tools
+#Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bule con crewai-tools
 litellm
 fastapi
 uvicorn

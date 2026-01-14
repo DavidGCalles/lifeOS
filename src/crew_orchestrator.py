@@ -9,9 +9,10 @@ from src.utils.session_manager import SessionManager
 from src.identity_manager import UserContext 
 
 class CrewOrchestrator:
-    def __init__(self):
+    def __init__(self, session_manager: SessionManager):
         self.agents = LifeOSAgents()
         self.tasks = LifeOSTasks()
+        self.session_manager = session_manager
 
     def _format_identity_context(self, user: UserContext | None) -> str:
         """Helper para formatear la cabecera de identidad."""
@@ -77,7 +78,7 @@ class CrewOrchestrator:
 
         # 2. MEMORIA DE SESIÓN (¿Qué dijimos antes?)
         if chat_id:
-            context_history = SessionManager.get_context(chat_id)
+            context_history = self.session_manager.get_context(chat_id)
             if context_history:
                 print(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
                 prompt_parts.append(f"📜 CHAT HISTORY:\n{context_history}\n")

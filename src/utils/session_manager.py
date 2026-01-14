@@ -1,87 +1,118 @@
-import json
 import os
-from typing import Dict
+from typing import Any
+from google.cloud import firestore
+from dotenv import load_dotenv
 
-# Configuración
-DATA_DIR = os.path.join(os.getcwd(), 'data')
-SESSION_FILE = os.path.join(DATA_DIR, 'sessions.json')
-MAX_HISTORY = 10  # Ventana deslizante (Memoria de Pez Dorada)
+load_dotenv()
 
 class SessionManager:
     """
-    Gestor de persistencia para el contexto conversacional inmediato.
+    Gestor de sesiones en Firestore (Python 3.12+).
+    Estructura: sessions/{chat_id}/messages/{message_id}
     """
+    _firestore_client: firestore.Client | None = None
+    _USE_FIRESTORE: bool = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
+    _DB_NAME: str | None = os.getenv('FIRESTORE_DB_NAME')
 
-    @staticmethod
-    def _ensure_data_dir():
-        """Se asegura de que la carpeta data exista."""
-        if not os.path.exists(DATA_DIR):
-            os.makedirs(DATA_DIR)
+    @classmethod
+    def _get_db(cls) -> firestore.Client | None:
+        """Inicialización Lazy del cliente Firestore."""
+        if cls._firestore_client is None and cls._USE_FIRESTORE:
+            try:
+                # Soporte para bases de datos nombradas (no default)
+                if cls._DB_NAME:
+                    cls._firestore_client = firestore.Client(database=cls._DB_NAME)
+                else:
+                    cls._firestore_client = firestore.Client()
+            except Exception as e:
+                print(f"❌ SESSION ERROR: No se pudo conectar a Firestore: {e}")
+                cls._firestore_client = None
+        return cls._firestore_client
 
-    @staticmethod
-    def _load_sessions() -> Dict:
-        """Carga el JSON de sesiones. Si falla, devuelve dict vacío."""
-        SessionManager._ensure_data_dir()
-        if not os.path.exists(SESSION_FILE):
-            return {}
+    @classmethod
+    def add_message(cls, chat_id: int | str, message_data: dict[str, Any]) -> None:
+        """
+        Guarda un mensaje en la subcolección 'messages'.
         
-        try:
-            with open(SESSION_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            return {}
+        Args:
+            chat_id: ID del chat (positivo=privado, negativo=grupo).
+            message_data: Diccionario con 'role', 'content', 'user_id', 'name', 'message_id'.
+        """
+        db = cls._get_db()
+        if not db:
+            return
 
-    @staticmethod
-    def _save_sessions(data: Dict):
-        """Escritura atómica para evitar corrupciones."""
-        SessionManager._ensure_data_dir()
-        temp_file = f"{SESSION_FILE}.tmp"
+        cid = str(chat_id)
+        
+        # 1. Actualizar metadatos de la sesión padre (Upsert)
+        # Se asume que 'sessions' es la colección raíz
+        session_ref = db.collection('sessions').document(cid)
+        session_ref.set({
+            'last_activity': firestore.SERVER_TIMESTAMP,
+            'type': 'group' if cid.startswith('-') else 'private' 
+        }, merge=True)
+
+        # 2. Preparar el payload del mensaje
+        # Convertimos message_id a string para usarlo como ID de documento
+        msg_id_raw = message_data.get('message_id', '')
+        msg_id_str = str(msg_id_raw)
+        
+        doc_data = {
+            'message_id': msg_id_raw,  # Guardamos el valor original (int o str)
+            'role': message_data.get('role', 'unknown'),
+            'content': message_data.get('content', ''),
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'sender_id': str(message_data.get('user_id', '')),
+            'name': message_data.get('name', 'Unknown')
+        }
+
         try:
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            os.replace(temp_file, SESSION_FILE)
+            # Usamos el ID de Telegram como ID del documento para idempotencia
+            if msg_id_str:
+                session_ref.collection('messages').document(msg_id_str).set(doc_data)
+            else:
+                # Fallback seguro si no hay ID (no debería ocurrir en Telegram)
+                session_ref.collection('messages').add(doc_data)
         except Exception as e:
-            print(f"❌ Error guardando sesión: {e}")
+            print(f"⚠️ Error guardando mensaje en Firestore: {e}")
 
-    @staticmethod
-    def get_context(chat_id: int) -> str:
+    @classmethod
+    def get_context(cls, chat_id: int | str, limit: int = 15) -> list[dict[str, Any]]:
         """
-        Devuelve el historial formateado como string para inyectar en el Prompt.
+        Recupera el historial reciente formateado para el LLM.
+        Devuelve lista en orden cronológico (Oldest -> Newest).
         """
-        data = SessionManager._load_sessions()
-        chat_key = str(chat_id)
-        history = data.get(chat_key, [])
-        
-        if not history:
-            return ""
+        db = cls._get_db()
+        if not db:
+            return []
 
-        # Formato claro para que el LLM distinga quién dijo qué
-        context_str = "\n--- 📜 CONTEXTO DE LA CONVERSACIÓN PREVIA ---\n"
-        for item in history:
-            context_str += f"User: {item['user']}\n"
-            context_str += f"AI: {item['ai']}\n"
-        context_str += "--- FIN DEL CONTEXTO ---\n"
-        
-        return context_str
+        cid = str(chat_id)
+        messages: list[dict[str, Any]] = []
 
-    @staticmethod
-    def save_interaction(chat_id: int, user_msg: str, ai_msg: str):
-        """
-        Guarda el turno y poda el historial si excede el límite.
-        """
-        data = SessionManager._load_sessions()
-        chat_key = str(chat_id)
-        
-        if chat_key not in data:
-            data[chat_key] = []
-        
-        data[chat_key].append({
-            "user": user_msg,
-            "ai": ai_msg
-        })
-        
-        # Sliding Window
-        if len(data[chat_key]) > MAX_HISTORY:
-            data[chat_key] = data[chat_key][-MAX_HISTORY:]
+        try:
+            # Consulta: Los N más recientes (orden Descendente por tiempo)
+            docs = (
+                db.collection('sessions')
+                .document(cid)
+                .collection('messages')
+                .order_by('timestamp', direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+
+            # Iteramos y formateamos
+            for doc in docs:
+                data = doc.to_dict()
+                messages.append({
+                    "message_id": data.get("message_id"),
+                    "role": data.get("role"),
+                    "name": data.get("name"),
+                    "content": data.get("content")
+                })
             
-        SessionManager._save_sessions(data)
+            # Invertimos la lista para que el LLM lea la conversación en orden natural
+            return messages[::-1]
+
+        except Exception as e:
+            print(f"⚠️ Error recuperando contexto: {e}")
+            return []
