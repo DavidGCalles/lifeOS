@@ -1,70 +1,56 @@
 import os
-import chromadb
-from chromadb.config import Settings
 import sys
+from qdrant_client import QdrantClient, models
 
-def test_chroma_connection():
-    print("Testing ChromaDB Connection...")
-    
-    # Configuración para conectar al servicio Dockerizado
-    chroma_host = os.getenv("CHROMA_HOST", "localhost") # localhost si corres el test desde fuera de docker
-    chroma_port = os.getenv("CHROMA_PORT", "8000")
-    
+def test_qdrant_connection():
+    """
+    Tests the low-level connection to the Qdrant vector database.
+    It verifies that the service is online and that we have write permissions.
+    """
+    print("🚀 Testing Qdrant Connection...")
+
+    qdrant_host = os.getenv("QDRANT_HOST", "localhost")
+    qdrant_api_key = os.getenv("QDRANT_API_KEY", None)
+
     try:
-        client = chromadb.HttpClient(
-            host=chroma_host, 
-            port=chroma_port,
-            settings=Settings(allow_reset=True, anonymized_telemetry=False)
+        # Initialize Qdrant client
+        client = QdrantClient(
+            host=qdrant_host, 
+            port=6333,
+            api_key=qdrant_api_key,
         )
+        print(f"✅ Qdrant client initialized for host: {qdrant_host}")
+
+        # 1. Verify Heartbeat with a simple request
+        collections_response = client.get_collections()
+        print(f"✅ Heartbeat successful. Found {len(collections_response.collections)} collections.")
+
+        # 2. Verify Write Permissions by creating and deleting a dummy collection
+        collection_name = "test_connectivity"
         
-        print(f"✅ Connected to Chroma at {chroma_host}:{chroma_port}")
-        
-        # Test básico de Heartbeat
-        print(f"💓 Heartbeat: {client.heartbeat()}")
-        
-        # Crear colección de prueba
-        collection_name = "test_verification_collection"
-        
-        # Limpieza previa por si acaso
+        # Cleanup if a previous test failed
         try:
-            client.delete_collection(collection_name)
-        except:
-            pass
+            client.delete_collection(collection_name=collection_name)
+            print(f"🧹 Cleaned up pre-existing dummy collection '{collection_name}'.")
+        except Exception:
+            pass # It's ok if it doesn't exist
 
-        collection = client.create_collection(name=collection_name)
-        print(f"✅ Collection '{collection_name}' created.")
-
-        # Insertar datos dummy (Chroma usará su embedding por defecto si no especificamos, 
-        # para este test de conectividad es suficiente. 
-        # Si quieres probar el embedding de Google, necesitamos instanciar la embedding function).
-        
-        collection.add(
-            documents=["This is a test document about axolotls", "This is a test about banking software"],
-            metadatas=[{"source": "test"}, {"source": "test"}],
-            ids=["id1", "id2"]
+        # Create collection
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=models.VectorParams(size=768, distance=models.Distance.COSINE),
         )
-        print("✅ Documents inserted.")
+        print(f"✅ Dummy collection '{collection_name}' created.")
 
-        # Query
-        results = collection.query(
-            query_texts=["axolotls"],
-            n_results=1
-        )
-        
-        print(f"🔍 Query Result: {results['documents'][0]}")
-        
-        if "axolotls" in results['documents'][0][0]:
-            print("🎉 SUCCESS: Vector retrieval works.")
-        else:
-            print("⚠️ WARNING: Retrieval content mismatch (check embedding logic).")
-            
-        # Cleanup
-        client.delete_collection(collection_name)
-        print("🧹 Cleanup done.")
+        # Delete collection
+        client.delete_collection(collection_name=collection_name)
+        print(f"✅ Dummy collection '{collection_name}' deleted.")
+
+        print("\n🎉 SUCCESS: Qdrant Online / Connection Successful")
 
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"❌ ERROR: Could not connect to Qdrant or perform operations. Details: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    test_chroma_connection()
+    test_qdrant_connection()

@@ -31,6 +31,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# --- DATABASE (QDRANT) ---
+data/qdrant/
+
 # --- LITELLM (Opcional) ---
 # Si decides guardar datos de costes locales
 litellm_data/

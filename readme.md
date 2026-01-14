@@ -14,7 +14,7 @@ El sistema está completamente dockerizado y se basa en 5 pilares fundamentales:
 
 3.  **Sistema de Memoria Dual:**
     *   **Memoria Conversacional (Corto Plazo):** Un fichero `sessions.json` guarda las últimas interacciones de cada chat para mantener el contexto inmediato de la conversación (ej. "¿y qué opinas de *eso*?").
-    *   **Memoria Semántica (Largo Plazo):** Utiliza una base de datos vectorial **ChromaDB** (con planes de migrar a **Qdrant**) para almacenar y recuperar recuerdos a largo plazo. Los agentes pueden guardar y consultar esta memoria usando herramientas RAG.
+    *   **Memoria Semántica (Largo Plazo):** Utiliza una base de datos vectorial **Qdrant** para almacenar y recuperar recuerdos a largo plazo. Los agentes pueden guardar y consultar esta memoria usando herramientas RAG.
 
 4.  **Identidad y RBAC (Middleware):** Un `IdentityManager` actúa como middleware en la entrada de cada mensaje. Verifica al usuario contra un fichero `users.json`, asigna un rol (`ADMIN`, `FAMILY`, `GUEST`) y enriquece el contexto. Esto permite personalizar las respuestas y asegurar que solo usuarios autorizados interactúen con el sistema.
 
@@ -89,11 +89,11 @@ docker-compose logs -f lifeos
 ```
 lifeOS/
 ├── data/
-│   ├── chroma/             # Datos persistentes de la memoria vectorial
+│   ├── qdrant/             # Datos persistentes de la memoria vectorial
 │   └── sessions.json       # Memoria conversacional de corto plazo
 ├── docs/
 │   └── adr/                # Decisiones de arquitectura documentadas
-├── docker-compose.yml      # Orquestación (App, LiteLLM, ChromaDB)
+├── docker-compose.yml      # Orquestación (App, LiteLLM, Qdrant)
 ├── Dockerfile              # Imagen de la aplicación principal
 ├── litellm_config.yaml     # Configuración del Proxy (Modelos, fallbacks)
 ├── main.py                 # Punto de entrada (Telegram Handler + Middleware)
@@ -106,7 +106,7 @@ lifeOS/
     │   └── users.json      # Allow-list de usuarios y roles
     ├── crew_orchestrator.py# Lógica de enrutamiento y ejecución de Crews
     ├── identity_manager.py # Middleware de Identidad y RBAC
-    ├── memory_manager.py   # Gestor de la memoria vectorial (ChromaDB)
+    ├── memory_manager.py   # Gestor de la memoria vectorial (Qdrant)
     ├── utils/
     │   └── session_manager.py # Gestor de la memoria conversacional
     └── tools/
@@ -119,8 +119,8 @@ lifeOS/
 - [x] **Proxy de LLMs:** Implementado con LiteLLM.
 - [x] **Memoria Conversacional:** Implementada con `sessions.json`.
 - [x] **Identidad y RBAC:** Implementado con `IdentityManager` y `users.json`.
-- [x] **Memoria a Largo Plazo (v1):** Implementada con ChromaDB.
-- [ ] **Migración de VectorDB:** Actualizar de ChromaDB a Qdrant para optimizaciones de producción.
+- [x] **Memoria a Largo Plazo (v1):** Implementada con Qdrant.
+- [x] **Migración de VectorDB:** Migración a Qdrant completada para optimizaciones de producción.
 - [ ] **"The Council":** Implementar lógica de debate y consenso entre agentes para decisiones complejas.
 - [ ] **Despliegue en Cloud:** Crear configuración para despliegue en GCP (Cloud Run).
 

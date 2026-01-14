@@ -27,14 +27,17 @@ services:
     # Arranca con debug para ver si saltan los fallbacks
     command: "--config /app/config.yaml --port 4000 --detailed_debug"
 
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: lifeos_chroma
-    volumes:
-      # Persistencia para que no llores cuando reinicies
-      - ./data/chroma:/chroma/chroma
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lifeos_qdrant
     ports:
-      - "8000:8000"
+      - "6333:6333" # REST API and Dashboard UI
+      - "6334:6334" # gRPC Port (internal)
+    volumes:
+      - ./data/qdrant:/qdrant/storage
     environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
+      # If you want to secure locally, uncomment this:
+      # - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+      - QDRANT__TELEMETRY_DISABLED=true
+    restart: always

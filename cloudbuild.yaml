@@ -87,7 +87,9 @@ steps:
       - '--set-env-vars=CREWAI_TRACING_ENABLED=false'
       - '--set-env-vars=USE_FIRESTORE=TRUE'
       - '--set-env-vars=FIRESTORE_DB_NAME=lifeos'
+      - '--set-env-vars=QDRANT_HOST=${_QDRANT_HOST}'
       - '--set-secrets=TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest'
+      - '--set-secrets=QDRANT_API_KEY=QDRANT_API_KEY:latest'
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
@@ -95,6 +97,7 @@ substitutions:
     _REGION: 'europe-west1'
     _WEBHOOK_URL: 'https://lifeos-backend-319986340006.europe-west1.run.app'
     _LITELLM_URL: 'https://lifeos-litellm-319986340006.europe-west1.run.app'
+    _QDRANT_HOST: 'https://8dfa97fa-d667-4dc6-9a1a-5d5eb96ac59b.europe-west3-0.gcp.cloud.qdrant.io'
 
 images:
   - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
