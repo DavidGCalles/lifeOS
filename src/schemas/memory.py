@@ -48,36 +48,3 @@ class EpisodicMemoryItem(BaseModel):
     content: str
     metadata: EpisodicMemoryMetadata
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
-
-    def to_chroma_payload(self) -> dict[str, Any]:
-        """
-        Prepara el objeto para ser insertado en ChromaDB.
-        Mueve 'created_at' dentro de metadata para permitir filtrado temporal.
-        """
-        # Convertimos metadatos a dict plano
-        meta_dict = self.metadata.model_dump(exclude_none=True)
-        
-        # Inyectamos timestamp en metadata para queries temporales en Chroma ($gte, etc)
-        meta_dict["created_at"] = self.created_at
-        
-        return {
-            "id": self.id,
-            "document": self.content,
-            "metadata": meta_dict
-        }
-
-    @classmethod
-    def from_chroma_result(cls, id: str, document: str, metadata: dict[str, Any]):
-        """
-        Reconstruye el objeto Pydantic desde la respuesta cruda de ChromaDB.
-        """
-        # Extraemos created_at que inyectamos al guardar
-        created_at = metadata.pop("created_at", datetime.now().isoformat())
-        
-        # El resto son los metadatos estrictos
-        return cls(
-            id=id,
-            content=document,
-            created_at=created_at,
-            metadata=EpisodicMemoryMetadata(**metadata)
-        )
