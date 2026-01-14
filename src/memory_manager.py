@@ -143,12 +143,15 @@ class VectorMemoryManager:
         qdrant_filter = models.Filter(must=filter_conditions) if filter_conditions else None
 
         try:
-            results = self._client.search(
+            result_obj = self._client.query_points(
                 collection_name=self._collection_name,
-                query_vector=query_vector,
-                query_filter=qdrant_filter,
+                query=query_vector,         # <-- CAMBIO 1: 'query_vector' ahora es 'query'
+                query_filter=qdrant_filter, # <-- Se mantiene 'query_filter'
                 limit=limit
             )
+            
+            # FIX ADR-007: Ahora devuelve un objeto wrapper, extraemos la lista de puntos
+            results = result_obj.points
             
             found_items = []
             for point in results:
