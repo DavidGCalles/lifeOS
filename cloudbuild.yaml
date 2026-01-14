@@ -1,0 +1,106 @@
+steps:
+  # ==========================================
+  # BUILD PHASE (Paralelo)
+  # ==========================================
+
+  # 1. Build Backend (LifeOS)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lifeos-backend:latest'
+      - '.'
+    id: 'build-backend'
+    waitFor: ['-'] # Empieza inmediatamente
+
+  # 2. Build LiteLLM Proxy
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'Dockerfile.litellm' # Usa el Dockerfile específico
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lifeos-litellm:latest'
+      - '.'
+    id: 'build-litellm'
+    waitFor: ['-'] # Empieza inmediatamente (paralelo al backend)
+
+  # ==========================================
+  # PUSH PHASE
+  # ==========================================
+  
+  # 3. Push Backend
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA']
+    id: 'push-backend'
+    waitFor: ['build-backend']
+
+  # 4. Push LiteLLM
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA']
+    id: 'push-litellm'
+    waitFor: ['build-litellm']
+
+  # ==========================================
+  # DEPLOY PHASE
+  # ==========================================
+
+  # 5. Deploy LiteLLM Service
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'lifeos-litellm' # Nombre del servicio
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated' # Cuidado aquí 
+      - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
+    id: 'deploy-litellm'
+    waitFor: ['push-litellm']
+
+  # 6. Deploy Backend Service
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'lifeos-backend' # Nombre del servicio
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars=RUN_MODE=WEBHOOK'
+      - '--set-env-vars=WEBHOOK_URL=${_WEBHOOK_URL}'
+      - '--set-env-vars=LITELLM_URL=${_LITELLM_URL}'
+      - '--set-env-vars=CREWAI_TRACING_ENABLED=false'
+      - '--set-env-vars=USE_FIRESTORE=TRUE'
+      - '--set-env-vars=FIRESTORE_DB_NAME=lifeos'
+      - '--set-secrets=TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest'
+    id: 'deploy-backend'
+    waitFor: ['push-backend']
+
+substitutions:
+    _REGION: 'europe-west1'
+    _WEBHOOK_URL: 'https://lifeos-backend-319986340006.europe-west1.run.app'
+    _LITELLM_URL: 'https://lifeos-litellm-319986340006.europe-west1.run.app'
+
+images:
+  - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/lifeos-backend:latest'
+  - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/lifeos-litellm:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
