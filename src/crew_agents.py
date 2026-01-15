@@ -7,8 +7,8 @@ import yaml
 import os
 from crewai import Agent
 from src.llm_config import llm
-# NUEVO: Importamos el mapeo de herramientas
-from src.tools import TOOL_MAPPING 
+from src.tools import TOOL_MAPPING
+from src.fast_agents import FastTrackAgent
 
 class LifeOSAgents:
     def __init__(self):
@@ -59,12 +59,21 @@ class LifeOSAgents:
                 else:
                     print(f"   ⚠️  WARN: Herramienta '{tool_name}' no existe en el catálogo.")
 
-        return Agent(
-            role=agent_data['role'],
-            goal=agent_data['goal'],
-            backstory=agent_data['backstory'],
-            verbose=agent_data.get('verbose', True),
-            allow_delegation=agent_data.get('allow_delegation', False),
-            tools=agent_tools,
-            llm=llm
-        )
+        execution_mode = agent_data.get('execution_mode', 'crew')
+
+        agent_params = {
+            'role': agent_data['role'],
+            'goal': agent_data['goal'],
+            'backstory': agent_data['backstory'],
+            'tools': agent_tools,
+            'llm': llm
+        }
+
+        if execution_mode == 'fast':
+            print(f"⚡ Creando FastTrackAgent para {agent_key.upper()}")
+            return FastTrackAgent(**agent_params)
+        else:
+            print(f"🐢 Creando CrewAI Agent para {agent_key.upper()}")
+            agent_params['verbose'] = agent_data.get('verbose', True)
+            agent_params['allow_delegation'] = agent_data.get('allow_delegation', False)
+            return Agent(**agent_params)

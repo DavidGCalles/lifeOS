@@ -17,6 +17,7 @@ jane:
     - memory_core  
   allow_delegation: true
   verbose: true
+  execution_mode: "fast"
 
 padrino:
   role: "Mentor de Disciplina (Estoicismo)"
@@ -72,3 +73,4 @@ dispatcher:
     - time
   allow_delegation: false
   verbose: true
+  execution_mode: "fast"

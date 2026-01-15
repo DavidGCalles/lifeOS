@@ -32,27 +32,28 @@ class CrewOrchestrator:
         """
         Ejecuta el Router con la lista de agentes dinámica e identidad del usuario.
         """
-        # 1. Crear el agente Router
         dispatcher = self.agents.create_agent('dispatcher')
-        
-        # 2. OBTENER EL MENÚ DINÁMICO (Auto-Discovery)
         options_text = self.agents.get_agents_summary()
-        
-        # 3. PREPARAR EL PROMPT CON IDENTIDAD
-        # Inyectamos quién habla para que el router detecte matices (ej: si habla un niño vs un adulto)
         identity_header = self._format_identity_context(user)
         full_context_message = f"{identity_header}\nIncoming Message: {user_message}"
-        
-        # 4. Crear la tarea inyectando el menú y el mensaje enriquecido
-        routing_task = self.tasks.router_task(dispatcher, full_context_message, options_text)
-        
-        routing_crew = Crew(
-            agents=[dispatcher],
-            tasks=[routing_task],
-            verbose=True
-        )
-        decision = routing_crew.kickoff()
-        return str(decision).strip().upper()
+
+        if getattr(dispatcher, "is_fast_agent", False):
+            # FAST TRACK: Direct execution
+            print("⚡ Fast-tracking dispatcher")
+            context = f"You must respond with ONLY ONE of these options, exactly as written: {options_text}"
+            decision = dispatcher.execute(user_message=full_context_message, context=context)
+            return str(decision).strip().upper()
+        else:
+            # SLOW TRACK: Wrap in Tasks and Crew
+            print("🐢 Crew-tracking dispatcher")
+            routing_task = self.tasks.router_task(dispatcher, full_context_message, options_text)
+            routing_crew = Crew(
+                agents=[dispatcher],
+                tasks=[routing_task],
+                verbose=True
+            )
+            decision = routing_crew.kickoff()
+            return str(decision).strip().upper()
 
     def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None):
         """
@@ -69,33 +70,39 @@ class CrewOrchestrator:
             print(f"⚠️ Agente '{yaml_key}' no encontrado. Fallback a JANE.")
             agent = self.agents.create_agent('jane')
 
-        # --- CONSTRUCCIÓN DEL PROMPT MAESTRO ---
-        prompt_parts = []
+        # --- CONSTRUCCIÓN DEL CONTEXTO ---
+        context_parts = []
 
         # 1. IDENTIDAD (¿Quién eres?)
         if user:
-            prompt_parts.append(self._format_identity_context(user))
+            context_parts.append(self._format_identity_context(user))
 
         # 2. MEMORIA DE SESIÓN (¿Qué dijimos antes?)
         if chat_id:
             context_history = self.session_manager.get_context(chat_id)
             if context_history:
                 print(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
-                prompt_parts.append(f"📜 CHAT HISTORY:\n{context_history}\n")
+                context_parts.append(f"📜 CHAT HISTORY:\n{context_history}\n")
 
-        # 3. MENSAJE ACTUAL (¿Qué quieres?)
-        prompt_parts.append(f"👇 CURRENT REQUEST:\n{user_message}")
-
-        # Unimos todo
-        full_message = "\n".join(prompt_parts)
+        full_context = "\\n".join(context_parts)
 
         # --- EJECUCIÓN ---
-        task1 = self.tasks.analysis_task(agent, full_message)
-        task2 = self.tasks.response_task(agent)
-        
-        execution_crew = Crew(
-            agents=[agent],
-            tasks=[task1, task2],
-            verbose=True
-        )
-        return execution_crew.kickoff()
+        if getattr(agent, "is_fast_agent", False):
+            # FAST TRACK: Direct execution
+            print(f"⚡ Fast-tracking {agent.role}")
+            return agent.execute(user_message=user_message, context=full_context)
+        else:
+            # SLOW TRACK: Wrap in Tasks and Crew
+            print(f"🐢 Crew-tracking {agent.role}")
+            # El mensaje completo para CrewAI incluye el contexto y la petición actual
+            full_message_for_crew = f"{full_context}\n👇 CURRENT REQUEST:\n{user_message}"
+            
+            task1 = self.tasks.analysis_task(agent, full_message_for_crew)
+            task2 = self.tasks.response_task(agent)
+            
+            execution_crew = Crew(
+                agents=[agent],
+                tasks=[task1, task2],
+                verbose=True
+            )
+            return execution_crew.kickoff()
