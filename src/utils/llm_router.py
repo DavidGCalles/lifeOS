@@ -32,6 +32,13 @@ class LiteLLMRouter:
         litellm.telemetry = False
         litellm.success_callback = []
         litellm.failure_callback = []
+        litellm.suppress_debug_info = True # <--- Nueva bandera para ser más agresivo
+        
+        # 2. Subir nivel de Log a ERROR para callar los fallbacks "informativos"
+        logging.getLogger("litellm").setLevel(logging.ERROR)
+        logging.getLogger("liteLLM").setLevel(logging.ERROR)
+        logging.getLogger("LiteLLM Router").setLevel(logging.ERROR) # <--- EL CULPABLE
+        logging.getLogger("LiteLLM Proxy").setLevel(logging.ERROR)
         # ---------------------------------------
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
