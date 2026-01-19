@@ -2,6 +2,7 @@
 Orquestador de Crews para LifeOS.
 Coordina la ejecución de agentes y tareas según la solicitud del usuario.
 '''
+import asyncio
 from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
@@ -19,7 +20,6 @@ class CrewOrchestrator:
         if not user:
             return ""
         
-        # Construimos un bloque de texto claro para el LLM
         return (
             f"👤 INTERACTION CONTEXT:\n"
             f"User Name: {user.name}\n"
@@ -28,23 +28,26 @@ class CrewOrchestrator:
             f"--------------------------------------------------\n"
         )
 
-    def route_request(self, user_message: str, user: UserContext | None = None) -> str:
+    async def route_request(self, user_message: str, user: UserContext | None = None) -> str:
         """
-        Ejecuta el Router con la lista de agentes dinámica e identidad del usuario.
+        Ejecuta el Router de forma ASÍNCRONA.
         """
         dispatcher = self.agents.create_agent('dispatcher')
         options_text = self.agents.get_agents_summary()
         identity_header = self._format_identity_context(user)
         full_context_message = f"{identity_header}\nIncoming Message: {user_message}"
 
+        # --- BRANCHING LOGIC ---
         if getattr(dispatcher, "is_fast_agent", False):
-            # FAST TRACK: Direct execution
+            # FAST TRACK: Await directo (LiteLLM Router)
             print("⚡ Fast-tracking dispatcher")
             context = f"You must respond with ONLY ONE of these options, exactly as written: {options_text}"
-            decision = dispatcher.execute(user_message=full_context_message, context=context)
+            
+            # Ejecución nativa async
+            decision = await dispatcher.execute(user_message=full_context_message, context=context)
             return str(decision).strip().upper()
         else:
-            # SLOW TRACK: Wrap in Tasks and Crew
+            # SLOW TRACK: CrewAI (Legacy sync) -> Thread Offloading
             print("🐢 Crew-tracking dispatcher")
             routing_task = self.tasks.router_task(dispatcher, full_context_message, options_text)
             routing_crew = Crew(
@@ -52,16 +55,15 @@ class CrewOrchestrator:
                 tasks=[routing_task],
                 verbose=True
             )
-            decision = routing_crew.kickoff()
+            # Envolvemos la llamada bloqueante kickoff() en un hilo
+            decision = await asyncio.to_thread(routing_crew.kickoff)
             return str(decision).strip().upper()
 
-    def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None):
+    async def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None):
         """
-        Ejecuta al agente seleccionado inyectando MEMORIA e IDENTIDAD.
+        Ejecuta al agente seleccionado. Si es Fast, await directo. Si es Crew, thread.
         """
-        # target_agent_key viene en MAYÚSCULAS desde el Router (ej: "PADRINO")
         yaml_key = target_agent_key.lower()
-        
         print(f"🚀 Orquestador: Activando agente '{yaml_key}' para usuario '{user.name if user else 'Unknown'}'...")
 
         try:
@@ -72,29 +74,25 @@ class CrewOrchestrator:
 
         # --- CONSTRUCCIÓN DEL CONTEXTO ---
         context_parts = []
-
-        # 1. IDENTIDAD (¿Quién eres?)
         if user:
             context_parts.append(self._format_identity_context(user))
 
-        # 2. MEMORIA DE SESIÓN (¿Qué dijimos antes?)
         if chat_id:
             context_history = self.session_manager.get_context(chat_id)
             if context_history:
                 print(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
                 context_parts.append(f"📜 CHAT HISTORY:\n{context_history}\n")
 
-        full_context = "\\n".join(context_parts)
+        full_context = "\n".join(context_parts)
 
         # --- EJECUCIÓN ---
         if getattr(agent, "is_fast_agent", False):
-            # FAST TRACK: Direct execution
+            # FAST TRACK
             print(f"⚡ Fast-tracking {agent.role}")
-            return agent.execute(user_message=user_message, context=full_context)
+            return await agent.execute(user_message=user_message, context=full_context)
         else:
-            # SLOW TRACK: Wrap in Tasks and Crew
+            # SLOW TRACK
             print(f"🐢 Crew-tracking {agent.role}")
-            # El mensaje completo para CrewAI incluye el contexto y la petición actual
             full_message_for_crew = f"{full_context}\n👇 CURRENT REQUEST:\n{user_message}"
             
             task1 = self.tasks.analysis_task(agent, full_message_for_crew)
@@ -105,4 +103,5 @@ class CrewOrchestrator:
                 tasks=[task1, task2],
                 verbose=True
             )
-            return execution_crew.kickoff()
+            # Bloqueante -> Thread
+            return await asyncio.to_thread(execution_crew.kickoff)

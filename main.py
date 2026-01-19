@@ -1,5 +1,5 @@
 '''
-LifeOS v2 - CrewAI Edition
+LifeOS v2 - Async Fast Track Edition
 '''
 import logging
 import asyncio
@@ -8,58 +8,42 @@ import sys
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from src.config import load_credentials
-# Importamos el orquestador
 from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
-
-# --- NUEVOS IMPORTS PARA IDENTIDAD ---
 from src.identity_manager import IdentityManager, UserRole
 from src.tools import TOOL_MAPPING
 
-# Configurar logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logging.getLogger("httpx").setLevel(logging.WARNING)  # Reducir verbosidad de httpx
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# --- ENVIRONMENT & BOT CONFIGURATION ---
 TELEGRAM_TOKEN = load_credentials()
 RUN_MODE = os.getenv('RUN_MODE', 'polling')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 WEBHOOK_PORT = int(os.getenv('PORT', '8080'))
 
-# --- SERVICE INITIALIZATION ---
 session_manager = SessionManager()
 orchestrator = CrewOrchestrator(session_manager=session_manager)
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Saludo inicial."""
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="🔥 LifeOS v2 Online (CrewAI + LiteLLM).\nSistema de agentes distribuido listo. ¿Cuál es el plan?"
+        text="🔥 LifeOS v2 Online (Async Engine).\nSistema de latencia optimizada listo."
     )
 
 async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Manejo del flujo principal:
-    Usuario -> Identidad -> Router -> Agente Especialista -> Usuario
-    """
     chat_id = update.effective_chat.id
-    user_id = update.effective_user.id  # ID crudo de Telegram
+    user_id = update.effective_user.id
 
     if not update.message or not update.message.text:
         return
 
-    # --- 🛡️ CAPA DE IDENTIDAD (MIDDLEWARE) ---
-    # 1. Resolvemos quién es el usuario consultando users.json
+    # 1. Identidad
     current_user = await asyncio.to_thread(IdentityManager.get_user, user_id)
     logging.info("👤 User: %s (%s)", current_user.name, current_user.role)
 
-    # 2. Inyección de Contexto de usuario en las Tools (Global State)
-    # CUIDADO, naive: esto es un state global, no por instancia
     if 'save_memory' in TOOL_MAPPING:
         TOOL_MAPPING['save_memory'].set_context(current_user)
 
-    # 3. Bloqueo de seguridad para desconocidos
     if current_user.role == UserRole.GUEST:
         await context.bot.send_message(chat_id=chat_id, text="⛔ Acceso Denegado.")
         return
@@ -68,11 +52,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     try:
-        # FASE 1: ENRUTAMIENTO (Router Agent)
-        # Averiguamos la intención inyectando la identidad (para matices de contexto)
+        # FASE 1: ENRUTAMIENTO (NATIVO ASYNC)
+        # Ya no usamos asyncio.to_thread aquí, el orchestrator maneja la asincronía
         logging.info("Enrutando mensaje: %s", user_text)
-        target_agent = await asyncio.to_thread(
-            orchestrator.route_request,
+        
+        target_agent = await orchestrator.route_request(
             user_text,
             current_user
         )
@@ -92,23 +76,19 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             }
         )
 
-        # FASE 2: EJECUCIÓN (Specialist Agent)
-        # Lanzamos el Crew específico inyectando Identidad + Memoria
-        respuesta = await asyncio.to_thread(
-            orchestrator.execute_request,
+        # FASE 2: EJECUCIÓN (NATIVO ASYNC)
+        # JANE/DISPATCHER responderán en <1s. PADRINO usará un hilo de fondo.
+        respuesta = await orchestrator.execute_request(
             user_text,
             target_agent,
             chat_id,
             current_user
         )
 
-        # FASE 3: PERSISTENCIA (Chat History Local)
-        # Guardamos el turno para la "memoria de pez" (SessionManager)
-        # Esto permite mantener el hilo de la conversación inmediata
+        # FASE 3: RESPUESTA
         respuesta_str = str(respuesta)
-
-        # 4. Respuesta al usuario
         mensaje_final = f"🤖 *[{target_agent}]*\n\n{respuesta_str}"
+        
         sent_message = await context.bot.send_message(
             chat_id=chat_id,
             text=mensaje_final,
@@ -121,9 +101,9 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             {
                 "role": "assistant",
                 "content": respuesta_str,
-                "user_id": context.bot.id, # ID del propio Bot
+                "user_id": context.bot.id,
                 "name": "LifeOS",
-                "message_id": sent_message.message_id # <--- CLAVE PARA CONTEXTO
+                "message_id": sent_message.message_id
             }
         )
 
@@ -131,30 +111,24 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         logging.error("Error en el proceso: %s", e)
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"⚠️ Error crítico en el núcleo de los agentes:\n`{str(e)}`",
+            text=f"⚠️ Error crítico:\n`{str(e)}`",
             parse_mode='Markdown'
         )
 
 def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Captura errores de red y otros fallos sin romper el loop."""
-    # Si es un error de red transitorio, solo lo logueamos como warning y seguimos
+    logging.warning(f'Update {update} caused error {context.error}')
 
 def main():
-    """Loop principal de Telegram."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), chat_logic))
     app.add_error_handler(error_handler)
-    print("🤖 LifeOS v2 Bot iniciando.")
+    print("🤖 LifeOS v2 Bot iniciando (Async Mode).")
+    
     if RUN_MODE == 'WEBHOOK':
         if not WEBHOOK_URL:
             logging.error("❌ FATAL: RUN_MODE=webhook pero PUBLIC_URL no está definida.")
             sys.exit(1)
-        
-        logging.info(f"🚀 Iniciando en modo WEBHOOK. Escuchando en el puerto {WEBHOOK_PORT}")
-        logging.info(f"   - URL Pública: {WEBHOOK_URL}")
-        
-        # El método run_webhook se encarga de configurar el webhook automáticamente.
         app.run_webhook(
             listen="0.0.0.0",
             port=WEBHOOK_PORT,
@@ -163,9 +137,7 @@ def main():
         )
     else:
         logging.info("🚀 Iniciando en modo POLLING.")
-        # El método run_polling se encarga de eliminar cualquier webhook previo.
         app.run_polling()
-
 
 if __name__ == "__main__":
     main()
