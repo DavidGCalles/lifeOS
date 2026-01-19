@@ -1,16 +1,18 @@
-import os
 import json
 import logging
-from openai import OpenAI
+import asyncio
+from typing import List, Optional
 from src.utils.tool_converter import convert_tools_to_openai_schema
+from src.utils.llm_router import LiteLLMRouter
 
 # Configuración de logs
 logger = logging.getLogger(__name__)
 
 class FastTrackAgent:
     """
-    Agente ligero que evita el overhead de CrewAI.
-    Se conecta DIRECTAMENTE al proxy local, ignorando el objeto LLM de CrewAI.
+    Agente ligero y ASÍNCRONO que evita el overhead de CrewAI.
+    Utiliza el LiteLLMRouter embebido para inferencia de latencia cero (in-process)
+    y envuelve las herramientas síncronas en hilos para no bloquear el loop.
     """
     is_fast_agent = True
 
@@ -21,26 +23,22 @@ class FastTrackAgent:
         self.tools = tools or []
         self.verbose = verbose
         
-        # --- CONFIGURACIÓN DIRECTA (Blindaje contra errores de Atributos) ---
-        # No usamos self.llm para evitar 'LLM object has no attribute model_name'
+        # Conexión al cerebro (Singleton In-Process)
+        self.router = LiteLLMRouter()
+        
+        # Modelo por defecto (debe coincidir con litellm_config.yaml)
         self.model_name = "crewai-proxy"
-        
-        # Usamos la variable de entorno o el default de Docker
-        self.base_url = os.getenv("LITELLM_URL", "http://litellm:4000")
-        self.api_key = "sk-fast-agent" # Dummy key para LiteLLM
-        
-        # Cliente OpenAI Nativo
-        self.client = OpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key
-        )
-        
-        # Pre-conversión de herramientas (Usamos tu función existente)
+
+        # Pre-conversión de herramientas a esquema OpenAI
         self.openai_tools = convert_tools_to_openai_schema(self.tools) if self.tools else None
         self.tool_map = {t.name: t for t in self.tools}
 
-    def execute(self, user_message: str, context: str = None) -> str:
-        # 1. Prompt del Sistema
+    async def execute(self, user_message: str, context: str = None) -> str:
+        """
+        Ejecuta el ciclo de pensamiento del agente de forma asíncrona.
+        Maneja User -> LLM -> Tool (en hilo) -> LLM -> Respuesta.
+        """
+        # 1. Construcción del System Prompt
         system_prompt = (
             f"ROLE: {self.role}\n"
             f"GOAL: {self.goal}\n"
@@ -55,12 +53,13 @@ class FastTrackAgent:
         ]
 
         if self.verbose:
-            logger.info(f"⚡ FAST-TRACK AGENT ({self.role}) STARTING...")
+            logger.info(f"⚡ ASYNC FAST-TRACK AGENT ({self.role}) STARTING...")
 
-        # 2. Bucle de Ejecución (Max 5 turnos)
+        # 2. Bucle de Ejecución (Max 5 turnos para evitar bucles infinitos)
         for turn in range(5):
             try:
-                response = self.client.chat.completions.create(
+                # A. Llamada al LLM (In-Process Async)
+                response = await self.router.acompletion(
                     model=self.model_name,
                     messages=messages,
                     tools=self.openai_tools,
@@ -68,36 +67,59 @@ class FastTrackAgent:
                 )
                 
                 msg = response.choices[0].message
+                
+                # Agregamos la respuesta del asistente al historial
+                # Nota: msg es un objeto, litellm/openai manejan su serialización interna,
+                # pero para el historial de mensajes necesitamos el diccionario o el objeto compatible.
                 messages.append(msg)
 
-                # Si pide herramientas
+                # B. ¿Quiere usar herramientas?
                 if msg.tool_calls:
+                    if self.verbose:
+                        logger.info(f"   🛠️  Agent requests {len(msg.tool_calls)} tool(s)...")
+
                     for tool_call in msg.tool_calls:
                         tool_name = tool_call.function.name
                         tool_args_str = tool_call.function.arguments
+                        tool_call_id = tool_call.id
                         
                         tool_instance = self.tool_map.get(tool_name)
+                        result_content = ""
+
                         if not tool_instance:
-                            result = f"Error: Tool '{tool_name}' not found."
+                            result_content = f"Error: Tool '{tool_name}' not found."
                         else:
                             try:
                                 args = json.loads(tool_args_str)
-                                # Usamos .run() para aprovechar la validación de Pydantic de CrewAI
-                                result = tool_instance.run(**args)
+                                if self.verbose:
+                                    logger.info(f"   👉 Executing {tool_name} with {args}")
+                                
+                                # --- CRÍTICO: PUENTE ROJO/AZUL ---
+                                # Las tools de CrewAI son síncronas (bloqueantes).
+                                # Las envolvemos en to_thread para que corran en un thread aparte
+                                # y no congelen el event loop de Telegram/FastAPI.
+                                result_content = await asyncio.to_thread(tool_instance.run, **args)
+                                
                             except Exception as e:
-                                result = f"Error executing {tool_name}: {str(e)}"
+                                error_msg = f"Error executing {tool_name}: {str(e)}"
+                                logger.error(error_msg)
+                                result_content = error_msg
 
+                        # C. Inyectar resultado de la herramienta
                         messages.append({
                             "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": str(result)
+                            "tool_call_id": tool_call_id,
+                            "content": str(result_content)
                         })
-                    continue # Siguiente vuelta del bucle
+                    
+                    # Continuamos a la siguiente iteración para que el LLM procese el resultado
+                    continue 
                 
+                # Si no hubo tool calls, esta es la respuesta final
                 return msg.content or ""
 
             except Exception as e:
-                logger.error(f"❌ FastTrack Error: {e}")
+                logger.error(f"❌ Async FastTrack Error: {e}", exc_info=True)
                 return f"Error in FastTrack execution: {e}"
 
         return "Error: Maximum execution turns reached."
