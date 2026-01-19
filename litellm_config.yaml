@@ -1,13 +1,6 @@
 model_list:
   - model_name: crewai-proxy
     litellm_params:
-      model: gemini/gemini-3-flash
-      api_key: os.environ/GEMINI_API_KEY
-      rpm: 5
-      tpm: 250000
-
-  - model_name: crewai-proxy
-    litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
       rpm: 5
