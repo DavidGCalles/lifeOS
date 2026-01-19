@@ -1,18 +1,60 @@
 model_list:
-  # MODELO REAL Y ESTABLE (Enero 2025)
   - model_name: crewai-proxy
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
-      rpm: 1000  # Subimos RPM para evitar rate-limits tontos
+      rpm: 5
+      tpm: 250000
 
-  # Embeddings (Crucial para la memoria)
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemini-2.5-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 10
+      tpm: 250000
+
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemma-3-27b-it
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+  
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemma-3-12b
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemma-3-4b
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemma-3-2b
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemma-3-1b
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+  
   - model_name: text-embedding-004
     litellm_params:
       model: gemini/text-embedding-004
       api_key: os.environ/GEMINI_API_KEY
 
 router_settings:
-  # Simplificamos el routing al máximo para aislar el fallo
+  fallbacks:
+    - "crewai-proxy": ["gemini/gemini-2.5-flash", "gemini/gemini-2.5-flash-lite", "gemini/gemma-3-27b-it", "gemini/gemma-3-12b", "gemini/gemma-3-4b", "gemini/gemma-3-2b", "gemini/gemma-3-1b"]
   allowed_fails: 1
   cooldown_time: 1
