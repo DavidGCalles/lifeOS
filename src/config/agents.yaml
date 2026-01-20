@@ -69,8 +69,13 @@ dispatcher:
     Si es un tema general, emocional o de agenda, SIEMPRE eliges a JANE.
     Si es vicios/disciplina -> PADRINO.
     Si es comida/nutrición -> KITCHEN.
-  tools:
-    - time
+  
+  # UPDATE: Sin herramientas para usar modelos rápidos (Gemma) sin errores
+  tools: []
+  
   allow_delegation: false
   verbose: true
   execution_mode: "fast"
+  
+  # UPDATE: Usamos el pool 'router-model' definido en litellm_config.yaml
+  model_name: "router-model"

@@ -16,7 +16,13 @@ class FastTrackAgent:
     """
     is_fast_agent = True
 
-    def __init__(self, role: str, goal: str, backstory: str, tools: list = None, verbose: bool = False, **kwargs):
+    def __init__(self, role: str, goal: str, backstory: str, tools: list = None, verbose: bool = False, model_name: str = "crewai-proxy", **kwargs):
+        """
+        Args:
+            model_name (str): El nombre del grupo de modelos en litellm_config.yaml. 
+                              Usa "router-model" para Gemma/Clasificación (Sin Tools)
+                              o "crewai-proxy" para Agentes (Con Tools).
+        """
         self.role = role
         self.goal = goal
         self.backstory = backstory
@@ -26,10 +32,11 @@ class FastTrackAgent:
         # Conexión al cerebro (Singleton In-Process)
         self.router = LiteLLMRouter()
         
-        # Modelo por defecto (debe coincidir con litellm_config.yaml)
-        self.model_name = "crewai-proxy"
+        # Modelo dinámico (inyectado desde YAML o default)
+        self.model_name = model_name
 
         # Pre-conversión de herramientas a esquema OpenAI
+        # Si no hay tools, esto se queda en None, lo cual es vital para Gemma.
         self.openai_tools = convert_tools_to_openai_schema(self.tools) if self.tools else None
         self.tool_map = {t.name: t for t in self.tools}
 
@@ -53,12 +60,13 @@ class FastTrackAgent:
         ]
 
         if self.verbose:
-            logger.info(f"⚡ ASYNC FAST-TRACK AGENT ({self.role}) STARTING...")
+            logger.info(f"⚡ ASYNC FAST-TRACK AGENT ({self.role}) STARTING. Model: {self.model_name}")
 
         # 2. Bucle de Ejecución (Max 5 turnos para evitar bucles infinitos)
         for turn in range(5):
             try:
                 # A. Llamada al LLM (In-Process Async)
+                # Si self.openai_tools es None, no se envía 'tools' ni 'tool_choice'
                 response = await self.router.acompletion(
                     model=self.model_name,
                     messages=messages,
@@ -69,11 +77,9 @@ class FastTrackAgent:
                 msg = response.choices[0].message
                 
                 # Agregamos la respuesta del asistente al historial
-                # Nota: msg es un objeto, litellm/openai manejan su serialización interna,
-                # pero para el historial de mensajes necesitamos el diccionario o el objeto compatible.
                 messages.append(msg)
 
-                # B. ¿Quiere usar herramientas?
+                # B. ¿Quiere usar herramientas? (Solo si el modelo soporta y las pidió)
                 if msg.tool_calls:
                     if self.verbose:
                         logger.info(f"   🛠️  Agent requests {len(msg.tool_calls)} tool(s)...")
@@ -96,8 +102,7 @@ class FastTrackAgent:
                                 
                                 # --- CRÍTICO: PUENTE ROJO/AZUL ---
                                 # Las tools de CrewAI son síncronas (bloqueantes).
-                                # Las envolvemos en to_thread para que corran en un thread aparte
-                                # y no congelen el event loop de Telegram/FastAPI.
+                                # Las envolvemos en to_thread para que corran en un thread aparte.
                                 result_content = await asyncio.to_thread(tool_instance.run, **args)
                                 
                             except Exception as e:
@@ -112,7 +117,7 @@ class FastTrackAgent:
                             "content": str(result_content)
                         })
                     
-                    # Continuamos a la siguiente iteración para que el LLM procese el resultado
+                    # Continuamos a la siguiente iteración
                     continue 
                 
                 # Si no hubo tool calls, esta es la respuesta final
