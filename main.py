@@ -37,8 +37,10 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not update.message or not update.message.text:
         return
 
-    # 1. Identidad
-    current_user = await asyncio.to_thread(IdentityManager.get_user, user_id)
+    # 1. Identidad (UPDATE: await nativo)
+    # IdentityManager.get_user ahora es async y no bloquea
+    current_user = await IdentityManager.get_user(user_id)
+    
     logging.info("👤 User: %s (%s)", current_user.name, current_user.role)
 
     if 'save_memory' in TOOL_MAPPING:
@@ -52,8 +54,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     try:
-        # FASE 1: ENRUTAMIENTO (NATIVO ASYNC)
-        # Ya no usamos asyncio.to_thread aquí, el orchestrator maneja la asincronía
+        # FASE 1: ENRUTAMIENTO
         logging.info("Enrutando mensaje: %s", user_text)
         
         target_agent = await orchestrator.route_request(
@@ -64,8 +65,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         logging.info("Destino decidido: %s", target_agent)
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        await asyncio.to_thread(
-            SessionManager.add_message,
+        # LOGGING USER MESSAGE (UPDATE: await nativo)
+        await SessionManager.add_message(
             chat_id,
             {
                 "role": current_user.role.value,
@@ -76,8 +77,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             }
         )
 
-        # FASE 2: EJECUCIÓN (NATIVO ASYNC)
-        # JANE/DISPATCHER responderán en <1s. PADRINO usará un hilo de fondo.
+        # FASE 2: EJECUCIÓN
         respuesta = await orchestrator.execute_request(
             user_text,
             target_agent,
@@ -95,8 +95,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode='Markdown'
         )
 
-        await asyncio.to_thread(
-            SessionManager.add_message,
+        # LOGGING BOT MESSAGE (UPDATE: await nativo)
+        await SessionManager.add_message(
             chat_id,
             {
                 "role": "assistant",
@@ -119,6 +119,7 @@ def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logging.warning(f'Update {update} caused error {context.error}')
 
 def main():
+    # ... (Resto del main se mantiene igual) ...
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler('start', start))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), chat_logic))
