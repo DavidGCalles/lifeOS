@@ -1,10 +1,9 @@
 '''
-LifeOS v2 - Async Fast Track Edition (FastAPI Wrapper)
+LifeOS v2 - Async Fast Track Edition (FastAPI Wrapper + Polling Support)
 '''
 import logging
 import os
 import sys
-import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from telegram import Update
@@ -17,13 +16,12 @@ from src.tools import TOOL_MAPPING
 
 # Configuración de Logs
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-# Silenciamos logs ruidosos de librerías externas
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Configuración
 TELEGRAM_TOKEN = load_credentials()
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-# Cloud Run inyecta PORT, uvicorn lo usará al arrancar
+RUN_MODE = os.getenv('RUN_MODE', 'polling').lower() # Default a polling en local
 PORT = int(os.getenv('PORT', '8080')) 
 
 session_manager = SessionManager()
@@ -34,11 +32,10 @@ orchestrator = CrewOrchestrator(session_manager=session_manager)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="🔥 LifeOS v2 Online (Async Engine + FastAPI).\nSistema estable."
+        text=f"🔥 LifeOS v2 Online (Async + FastAPI).\nModo: {RUN_MODE.upper()}"
     )
 
 async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # ... (Lógica idéntica a tu versión anterior) ...
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
 
@@ -61,13 +58,12 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     try:
         # FASE 1: ENRUTAMIENTO
-        logging.info("Enrutando mensaje: %s", user_text)
         target_agent = await orchestrator.route_request(user_text, current_user)
-        logging.info("Destino decidido: %s", target_agent)
+        logging.info("Enrutando: %s -> %s", user_text, target_agent)
         
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         
-        # LOGGING USER MESSAGE
+        # LOGGING USER
         await SessionManager.add_message(
             chat_id,
             {"role": current_user.role.value, "content": user_text, "user_id": current_user.telegram_id, "name": current_user.name, "message_id": update.message.message_id}
@@ -84,7 +80,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode='Markdown'
         )
 
-        # LOGGING BOT MESSAGE
+        # LOGGING BOT
         await SessionManager.add_message(
             chat_id,
             {"role": "assistant", "content": respuesta_str, "user_id": context.bot.id, "name": "LifeOS", "message_id": sent_message.message_id}
@@ -97,52 +93,65 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logging.warning(f'Update {update} caused error {context.error}')
 
-# --- FastAPI Setup ---
+# --- FastAPI Setup & Lifecycle ---
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Inicializar Webhook de Telegram
-    logging.info("🚀 Iniciando LifeOS Bot Application...")
+    # --- STARTUP ---
+    logging.info(f"🚀 Iniciando LifeOS ({RUN_MODE})...")
+    
+    # Construimos la app de Telegram
     bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot_app.add_handler(CommandHandler('start', start))
     bot_app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), chat_logic))
     bot_app.add_error_handler(error_handler)
     
-    # Inyectamos la app de telegram en el estado de FastAPI para accederla en las rutas
+    # Inyectamos en estado para acceso global
     app.state.bot_app = bot_app
     
     await bot_app.initialize()
     await bot_app.start()
     
-    # Configurar Webhook real
-    if WEBHOOK_URL:
+    if RUN_MODE == 'webhook' and WEBHOOK_URL:
+        # MODO NUBE: Configuramos Webhook
         webhook_path = f"{WEBHOOK_URL}/telegram"
-        logging.info(f"🔗 Configurando Webhook en: {webhook_path}")
+        logging.info(f"🔗 Configurando Webhook: {webhook_path}")
         await bot_app.bot.set_webhook(url=webhook_path)
+    else:
+        # MODO LOCAL (DOCKER): Arrancamos Polling manual
+        logging.info("📡 Arrancando Polling (Modo Local)...")
+        # Eliminamos cualquier webhook previo para evitar conflictos
+        await bot_app.bot.delete_webhook()
+        await bot_app.updater.start_polling()
     
-    yield # Aquí corre la aplicación
+    yield # La aplicación corre aquí
     
-    # Shutdown: Limpieza
-    logging.info("🛑 Deteniendo LifeOS Bot Application...")
+    # --- SHUTDOWN ---
+    logging.info("🛑 Deteniendo LifeOS...")
+    if RUN_MODE != 'webhook':
+        await bot_app.updater.stop()
+        
     await bot_app.stop()
     await bot_app.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
-# 1. Health Check (Vital para Cloud Run)
+# Health Check (Para Cloud Run y para saber que Uvicorn vive)
 @app.get("/")
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "lifeos-v2"}
+    return {"status": "healthy", "mode": RUN_MODE}
 
-# 2. Webhook Handler
+# Webhook Handler (Solo usado en Cloud Run)
 @app.post("/telegram")
 async def telegram_webhook(request: Request):
+    if RUN_MODE != 'webhook':
+        return Response(status_code=404, content="Webhook disabled in polling mode")
+        
     bot_app = request.app.state.bot_app
     try:
         data = await request.json()
         update = Update.de_json(data, bot_app.bot)
-        # Procesar update en el loop de eventos sin bloquear
         await bot_app.process_update(update)
         return Response(status_code=200)
     except Exception as e:
@@ -150,6 +159,5 @@ async def telegram_webhook(request: Request):
         return Response(status_code=500)
 
 if __name__ == "__main__":
-    # Solo para desarrollo local sin docker
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=PORT)
