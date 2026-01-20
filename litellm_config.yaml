@@ -76,11 +76,11 @@ router_settings:
   fallbacks:
     # Agentes: Si Flash Lite (10 RPM) se llena, pasamos a Flash (5 RPM).
     # Es un carril lento, pero seguro.
-    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite-001", "gemini/gemini-2.5-flash"]
+    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash"]
     
     # Router: Tenemos mucho ancho de banda (30 RPM x 4 modelos).
     # Ordenamos por "inteligencia descendente".
-    - "router-model": ["gemini/gemma-3-1b-it", "gemini/gemma-3-4b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-27b-it", "gemini/gemini-2.5-flash"]
+    - "router-model": ["gemini/gemma-3-4b-it", "gemini/gemma-3-1b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-27b-it", "gemini/gemini-2.5-flash"]
   
   allowed_fails: 1
   cooldown_time: 1 # Si falla, espera 1s y prueba el siguiente

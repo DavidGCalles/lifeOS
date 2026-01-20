@@ -5,6 +5,7 @@ from pathlib import Path
 from enum import StrEnum, auto
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from google.cloud.firestore import AsyncClient # Import Async
 
 load_dotenv()
 
@@ -30,29 +31,29 @@ class UserContext(BaseModel):
 class IdentityManager:
     _users_db: dict[str, dict] = {}
     _loaded_local: bool = False
-    _firestore_client = None
+    _firestore_client: AsyncClient | None = None # Type checking
     
     _USE_FIRESTORE = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
     _DB_NAME = os.getenv('FIRESTORE_DB_NAME')
-    # Intenta buscar en varios sitios por si acaso
     _CONFIG_PATH: Path = Path(__file__).parent / "config" / "users.json"
 
     @classmethod
-    def _get_firestore_client(cls):
+    def _get_firestore_client(cls) -> AsyncClient | None:
         if cls._firestore_client is None and cls._USE_FIRESTORE:
             try:
-                from google.cloud import firestore
                 if cls._DB_NAME:
-                    cls._firestore_client = firestore.Client(database=cls._DB_NAME)
+                    cls._firestore_client = AsyncClient(database=cls._DB_NAME)
                 else:
-                    cls._firestore_client = firestore.Client()
+                    cls._firestore_client = AsyncClient()
             except Exception as e:
-                logger.error(f"❌ Error conectando a Firestore: {e}")
+                logger.error(f"❌ Error conectando a Firestore (Async): {e}")
                 cls._firestore_client = None
         return cls._firestore_client
 
     @classmethod
     def _load_local_users(cls) -> None:
+        # Esta carga de JSON local es muy rápida y se hace una vez,
+        # podemos dejarla sincrona o envolverla si el archivo fuera enorme.
         if cls._loaded_local: return
         if not cls._CONFIG_PATH.exists():
             return
@@ -64,11 +65,11 @@ class IdentityManager:
             logger.error(f"❌ Local JSON error: {e}")
 
     @classmethod
-    def get_user(cls, telegram_id: int | str) -> UserContext:
+    async def get_user(cls, telegram_id: int | str) -> UserContext:
+        """ Método convertido a ASYNC """
         tid_str = str(telegram_id)
         
-        # --- 0. PASE VIP DE EMERGENCIA (ENV VAR) ---
-        # Esto te salva si no hay JSON ni Firestore
+        # 0. PASE VIP DE EMERGENCIA
         env_admin_id = os.getenv("ADMIN_USER_ID")
         if env_admin_id and tid_str == str(env_admin_id):
             logger.info(f"🛡️ ACCESO DE RESCATE (Env Var) para: {tid_str}")
@@ -78,14 +79,14 @@ class IdentityManager:
                 role=UserRole.ADMIN,
                 description="Emergency Access via Environment Variable"
             )
-        # -------------------------------------------
 
-        # 1. INTENTO FIRESTORE
+        # 1. INTENTO FIRESTORE (ASYNC)
         if cls._USE_FIRESTORE:
             db = cls._get_firestore_client()
             if db:
                 try:
-                    doc = db.collection('users').document(tid_str).get()
+                    # Await directo
+                    doc = await db.collection('users').document(tid_str).get()
                     if doc.exists:
                         data = doc.to_dict()
                         return UserContext(
@@ -97,7 +98,7 @@ class IdentityManager:
                 except Exception as e:
                     logger.error(f"⚠️ Fallo lectura Firestore: {e}")
 
-        # 2. FALLBACK LOCAL
+        # 2. FALLBACK LOCAL (Sync, pero muy rápido)
         cls._load_local_users()
         data = cls._users_db.get(tid_str)
         if data:
