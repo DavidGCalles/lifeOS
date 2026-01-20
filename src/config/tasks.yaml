@@ -17,17 +17,26 @@ response:
     Sé útil y accionable.
   expected_output: "Respuesta de texto lista para enviar."
 
+# UPDATE: Prompt optimizado para Soft-JSON
 router:
   description: >
-    Analiza el mensaje del usuario: "{user_message}"
+    You are the central dispatcher for LifeOS.
+    Analyze the incoming user message: "{user_message}"
     
-    Tienes disponibles los siguientes agentes especialistas:
-    
+    Available Specialist Agents:
     {agent_options}
     
     DECISIÓN:
-    ¿Cuál de los agentes anteriores es el MEJOR para atender esto?
+    1. Tabaco/Vicios/Pereza -> PADRINO
+    2. Comida/Cocina/Supermercado -> KITCHEN
+    3. Todo lo demás (Agenda, Dudas, Charla) -> JANE
     
-    Responde ÚNICAMENTE con el nombre del agente (una palabra exacta de la lista, en MAYÚSCULAS).
-    Ejemplo: JANE, PADRINO...
-  expected_output: "Una sola palabra clave (Nombre del Agente)."
+    OUTPUT FORMAT:
+    You MUST respond with a valid JSON object.
+    Do NOT add explanations, markdown, or code blocks. Just the JSON string.
+    
+    Example:
+    {{
+      "target_agent": "PADRINO"
+    }}
+  expected_output: "JSON Object: {\"target_agent\": \"NAME\"}"

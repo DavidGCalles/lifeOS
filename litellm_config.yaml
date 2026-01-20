@@ -22,28 +22,21 @@ model_list:
   
   - model_name: crewai-proxy
     litellm_params:
-      model: gemini/gemma-3-12b
+      model: gemini/gemma-3-12b-it
       api_key: os.environ/GEMINI_API_KEY
       rpm: 30
       tpm: 15000
 
   - model_name: crewai-proxy
     litellm_params:
-      model: gemini/gemma-3-4b
+      model: gemini/gemma-3-4b-it
       api_key: os.environ/GEMINI_API_KEY
       rpm: 30
       tpm: 15000
 
   - model_name: crewai-proxy
     litellm_params:
-      model: gemini/gemma-3-2b
-      api_key: os.environ/GEMINI_API_KEY
-      rpm: 30
-      tpm: 15000
-
-  - model_name: crewai-proxy
-    litellm_params:
-      model: gemini/gemma-3-1b
+      model: gemini/gemma-3-1b-it
       api_key: os.environ/GEMINI_API_KEY
       rpm: 30
       tpm: 15000
@@ -55,6 +48,6 @@ model_list:
 
 router_settings:
   fallbacks:
-    - "crewai-proxy": ["gemini/gemini-2.5-flash", "gemini/gemini-2.5-flash-lite", "gemini/gemma-3-27b-it", "gemini/gemma-3-12b", "gemini/gemma-3-4b", "gemini/gemma-3-2b", "gemini/gemma-3-1b"]
+    - "crewai-proxy": ["gemini/gemini-2.5-flash", "gemini/gemini-2.5-flash-lite", "gemini/gemma-3-27b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-4b-it", "gemini/gemma-3-1b-it"]
   allowed_fails: 1
   cooldown_time: 1
