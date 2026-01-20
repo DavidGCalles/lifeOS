@@ -20,23 +20,23 @@ response:
 # UPDATE: Prompt optimizado para Soft-JSON
 router:
   description: >
-    You are the central dispatcher for LifeOS.
+    You are a routing classification system. NOT AN AI ASSISTANT.
     Analyze the incoming user message: "{user_message}"
     
     Available Specialist Agents:
     {agent_options}
     
-    DECISIÓN:
-    1. Tabaco/Vicios/Pereza -> PADRINO
-    2. Comida/Cocina/Supermercado -> KITCHEN
-    3. Todo lo demás (Agenda, Dudas, Charla) -> JANE
+    DECISION LOGIC:
+    1. Bad habits/Discipline -> PADRINO
+    2. Food/Kitchen/Groceries -> KITCHEN
+    3. Everything else -> JANE
     
-    OUTPUT FORMAT:
-    You MUST respond with a valid JSON object.
-    Do NOT add explanations, markdown, or code blocks. Just the JSON string.
+    OUTPUT INSTRUCTIONS:
+    - Output ONLY valid JSON.
+    - DO NOT write introductions like "Okay" or "Here is the JSON".
+    - DO NOT use markdown code blocks (```json).
+    - START the response with {{ and END with }}.
     
     Example:
-    {{
-      "target_agent": "PADRINO"
-    }}
+    {{ "target_agent": "PADRINO" }}
   expected_output: "JSON Object: {\"target_agent\": \"NAME\"}"

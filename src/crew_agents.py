@@ -23,7 +23,6 @@ class LifeOSAgents:
             return yaml.safe_load(file)
 
     def get_agents_summary(self):
-        # ... (código existente igual) ...
         summary_lines = []
         for key, data in self.config.items():
             if key == 'dispatcher':
@@ -38,7 +37,6 @@ class LifeOSAgents:
         agent_data = self.config.get(agent_key)
         
         if not agent_data:
-            # Fallback de seguridad, aunque idealmente debería lanzar error
             print(f"⚠️ Agente '{agent_key}' no encontrado en YAML.")
             return None
 
@@ -60,6 +58,9 @@ class LifeOSAgents:
                     print(f"   ⚠️  WARN: Herramienta '{tool_name}' no existe en el catálogo.")
 
         execution_mode = agent_data.get('execution_mode', 'crew')
+        
+        # NUEVO: Leemos qué modelo debe usar este agente (Default: crewai-proxy)
+        target_model_name = agent_data.get('model_name', 'crewai-proxy')
 
         agent_params = {
             'role': agent_data['role'],
@@ -70,10 +71,12 @@ class LifeOSAgents:
         }
 
         if execution_mode == 'fast':
-            print(f"⚡ Creando FastTrackAgent para {agent_key.upper()}")
-            return FastTrackAgent(**agent_params)
+            print(f"⚡ Creando FastTrackAgent para {agent_key.upper()} usando modelo: '{target_model_name}'")
+            # Inyectamos el nombre del modelo específico para el Router (Gemma)
+            return FastTrackAgent(**agent_params, model_name=target_model_name)
         else:
             print(f"🐢 Creando CrewAI Agent para {agent_key.upper()}")
+            # Los agentes normales usan el 'llm' global configurado en src/llm_config.py
             agent_params['verbose'] = agent_data.get('verbose', True)
             agent_params['allow_delegation'] = agent_data.get('allow_delegation', False)
             return Agent(**agent_params)
