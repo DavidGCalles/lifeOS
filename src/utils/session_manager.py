@@ -1,42 +1,39 @@
 import os
 from typing import Any
 from google.cloud import firestore
+from google.cloud.firestore import AsyncClient, Query # Update imports
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class SessionManager:
     """
-    Gestor de sesiones en Firestore (Python 3.12+).
+    Gestor de sesiones en Firestore (Async Edition).
     Estructura: sessions/{chat_id}/messages/{message_id}
     """
-    _firestore_client: firestore.Client | None = None
+    _firestore_client: AsyncClient | None = None
     _USE_FIRESTORE: bool = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
     _DB_NAME: str | None = os.getenv('FIRESTORE_DB_NAME')
 
     @classmethod
-    def _get_db(cls) -> firestore.Client | None:
-        """Inicialización Lazy del cliente Firestore."""
+    def _get_db(cls) -> AsyncClient | None:
+        """Inicialización Lazy del cliente Firestore Asíncrono."""
         if cls._firestore_client is None and cls._USE_FIRESTORE:
             try:
-                # Soporte para bases de datos nombradas (no default)
+                # Instanciamos AsyncClient
                 if cls._DB_NAME:
-                    cls._firestore_client = firestore.Client(database=cls._DB_NAME)
+                    cls._firestore_client = AsyncClient(database=cls._DB_NAME)
                 else:
-                    cls._firestore_client = firestore.Client()
+                    cls._firestore_client = AsyncClient()
             except Exception as e:
-                print(f"❌ SESSION ERROR: No se pudo conectar a Firestore: {e}")
+                print(f"❌ SESSION ERROR: No se pudo conectar a Firestore (Async): {e}")
                 cls._firestore_client = None
         return cls._firestore_client
 
     @classmethod
-    def add_message(cls, chat_id: int | str, message_data: dict[str, Any]) -> None:
+    async def add_message(cls, chat_id: int | str, message_data: dict[str, Any]) -> None:
         """
-        Guarda un mensaje en la subcolección 'messages'.
-        
-        Args:
-            chat_id: ID del chat (positivo=privado, negativo=grupo).
-            message_data: Diccionario con 'role', 'content', 'user_id', 'name', 'message_id'.
+        Guarda un mensaje de forma ASÍNCRONA.
         """
         db = cls._get_db()
         if not db:
@@ -45,20 +42,20 @@ class SessionManager:
         cid = str(chat_id)
         
         # 1. Actualizar metadatos de la sesión padre (Upsert)
-        # Se asume que 'sessions' es la colección raíz
         session_ref = db.collection('sessions').document(cid)
-        session_ref.set({
+        
+        # Await obligatorio en operaciones de red
+        await session_ref.set({
             'last_activity': firestore.SERVER_TIMESTAMP,
             'type': 'group' if cid.startswith('-') else 'private' 
         }, merge=True)
 
-        # 2. Preparar el payload del mensaje
-        # Convertimos message_id a string para usarlo como ID de documento
+        # 2. Preparar payload
         msg_id_raw = message_data.get('message_id', '')
         msg_id_str = str(msg_id_raw)
         
         doc_data = {
-            'message_id': msg_id_raw,  # Guardamos el valor original (int o str)
+            'message_id': msg_id_raw,
             'role': message_data.get('role', 'unknown'),
             'content': message_data.get('content', ''),
             'timestamp': firestore.SERVER_TIMESTAMP,
@@ -67,20 +64,18 @@ class SessionManager:
         }
 
         try:
-            # Usamos el ID de Telegram como ID del documento para idempotencia
+            # Operaciones awaitables
             if msg_id_str:
-                session_ref.collection('messages').document(msg_id_str).set(doc_data)
+                await session_ref.collection('messages').document(msg_id_str).set(doc_data)
             else:
-                # Fallback seguro si no hay ID (no debería ocurrir en Telegram)
-                session_ref.collection('messages').add(doc_data)
+                await session_ref.collection('messages').add(doc_data)
         except Exception as e:
             print(f"⚠️ Error guardando mensaje en Firestore: {e}")
 
     @classmethod
-    def get_context(cls, chat_id: int | str, limit: int = 15) -> list[dict[str, Any]]:
+    async def get_context(cls, chat_id: int | str, limit: int = 15) -> list[dict[str, Any]]:
         """
-        Recupera el historial reciente formateado para el LLM.
-        Devuelve lista en orden cronológico (Oldest -> Newest).
+        Recupera historial reciente (Async).
         """
         db = cls._get_db()
         if not db:
@@ -90,18 +85,18 @@ class SessionManager:
         messages: list[dict[str, Any]] = []
 
         try:
-            # Consulta: Los N más recientes (orden Descendente por tiempo)
-            docs = (
+            # Query definition is synchronous logic
+            messages_ref = (
                 db.collection('sessions')
                 .document(cid)
                 .collection('messages')
-                .order_by('timestamp', direction=firestore.Query.DESCENDING)
+                .order_by('timestamp', direction=Query.DESCENDING)
                 .limit(limit)
-                .stream()
             )
 
-            # Iteramos y formateamos
-            for doc in docs:
+            # Execution is async via stream()
+            # En AsyncClient, stream() devuelve un AsyncIterator
+            async for doc in messages_ref.stream():
                 data = doc.to_dict()
                 messages.append({
                     "message_id": data.get("message_id"),
@@ -110,7 +105,6 @@ class SessionManager:
                     "content": data.get("content")
                 })
             
-            # Invertimos la lista para que el LLM lea la conversación en orden natural
             return messages[::-1]
 
         except Exception as e:

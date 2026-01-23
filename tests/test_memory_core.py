@@ -1,7 +1,8 @@
+import asyncio
 from src.schemas.memory import EpisodicMemoryItem, EpisodicMemoryMetadata
 from src.memory_manager import VectorMemoryManager
 
-def run_test():
+async def run_test():
     print("🧠 Initializing Memory Manager...")
     manager = VectorMemoryManager()
     
@@ -18,12 +19,12 @@ def run_test():
     
     # 2. Guardar
     print(f"💾 Saving memory ID: {memory.id}")
-    manager.add_memory(memory)
+    await manager.add_memory(memory)
     
     # 3. Buscar (Query Semántica)
     query = "duración reuniones"
     print(f"\n🔍 Searching for: '{query}'")
-    results = manager.search_memory(query=query)
+    results = await manager.search_memory(query=query)
     
     found = False
     for res in results:
@@ -36,5 +37,10 @@ def run_test():
     else:
         print("\n❌ TEST FAILED: Memory not found.")
 
+    # 4. Delete
+    print(f"\n🗑️ Deleting memory ID: {memory.id}")
+    await manager.delete_memory(memory.id)
+    print("✅ Memory deleted.")
+
 if __name__ == "__main__":
-    run_test()
+    asyncio.run(run_test())

@@ -17,17 +17,26 @@ response:
     Sé útil y accionable.
   expected_output: "Respuesta de texto lista para enviar."
 
+# UPDATE: Prompt optimizado para Soft-JSON
 router:
   description: >
-    Analiza el mensaje del usuario: "{user_message}"
+    You are a routing classification system. NOT AN AI ASSISTANT.
+    Analyze the incoming user message: "{user_message}"
     
-    Tienes disponibles los siguientes agentes especialistas:
-    
+    Available Specialist Agents:
     {agent_options}
     
-    DECISIÓN:
-    ¿Cuál de los agentes anteriores es el MEJOR para atender esto?
+    DECISION LOGIC:
+    1. Bad habits/Discipline -> PADRINO
+    2. Food/Kitchen/Groceries -> KITCHEN
+    3. Everything else -> JANE
     
-    Responde ÚNICAMENTE con el nombre del agente (una palabra exacta de la lista, en MAYÚSCULAS).
-    Ejemplo: JANE, PADRINO...
-  expected_output: "Una sola palabra clave (Nombre del Agente)."
+    OUTPUT INSTRUCTIONS:
+    - Output ONLY valid JSON.
+    - DO NOT write introductions like "Okay" or "Here is the JSON".
+    - DO NOT use markdown code blocks (```json).
+    - START the response with {{ and END with }}.
+    
+    Example:
+    {{ "target_agent": "PADRINO" }}
+  expected_output: "JSON Object: {\"target_agent\": \"NAME\"}"

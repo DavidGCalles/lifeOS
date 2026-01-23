@@ -90,6 +90,8 @@ steps:
       - '--set-env-vars=QDRANT_HOST=${_QDRANT_HOST}'
       - '--set-secrets=TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest'
       - '--set-secrets=QDRANT_API_KEY=QDRANT_API_KEY:latest'
+      - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
+      - '--set-secrets=ADMIN_USER_ID=ADMIN_USER_ID:latest'
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
