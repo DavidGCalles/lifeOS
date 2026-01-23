@@ -47,7 +47,7 @@ class RememberTool(BaseTool):
         """Inyecta el usuario actual antes de ejecutar la tool."""
         self._current_user = user
 
-    def _run(self, content: str, domain: str, type: str, tags: str | None = None) -> str:
+    async def _run(self, content: str, domain: str, type: str, tags: str | None = None) -> str:
         # Determinamos el autor
         author_name = self._current_user.name if self._current_user else "unknown_system"
         try:
@@ -66,11 +66,14 @@ class RememberTool(BaseTool):
                 created_by=author_name 
             )
             
-            mem_id = manager.add_memory(memory)
+            mem_id = await manager.add_memory(memory)
             return f"✅ Memory saved successfully with ID: {mem_id}"
             
         except Exception as e:
             return f"❌ Error saving memory: {str(e)}"
+
+    async def run(self, *args, **kwargs):
+        return await self._run(*args, **kwargs)
 
 class RecallTool(BaseTool):
     name: str = "search_memory"
@@ -80,7 +83,7 @@ class RecallTool(BaseTool):
     )
     args_schema: type[BaseModel] = RecallInput
 
-    def _run(self, query: str, domain: str | None = None) -> str:
+    async def _run(self, query: str, domain: str | None = None) -> str:
         try:
             manager = VectorMemoryManager()
             
@@ -88,7 +91,7 @@ class RecallTool(BaseTool):
             if domain:
                 filters["domain"] = domain
 
-            results = manager.search_memory(query=query, filters=filters if filters else None)
+            results = await manager.search_memory(query=query, filters=filters if filters else None)
             
             if not results:
                 return "No relevant memories found."
@@ -102,6 +105,9 @@ class RecallTool(BaseTool):
 
         except Exception as e:
             return f"❌ Error retrieving memories: {str(e)}"
+
+    async def run(self, *args, **kwargs):
+        return await self._run(*args, **kwargs)
         
 class ForgetTool(BaseTool):
     name: str = "forget_memory"
@@ -112,13 +118,13 @@ class ForgetTool(BaseTool):
     )
     args_schema: type[BaseModel] = ForgetInput
 
-    def _run(self, query: str) -> str:
+    async def _run(self, query: str) -> str:
         try:
             manager = VectorMemoryManager()
             
             # 1. Primero buscamos qué vamos a borrar (para confirmar)
             # Buscamos el top 1 más similar
-            results = manager.search_memory(query=query, limit=1)
+            results = await manager.search_memory(query=query, limit=1)
             
             if not results:
                 return f"❌ Could not find any memory resembling '{query}' to delete."
@@ -127,7 +133,7 @@ class ForgetTool(BaseTool):
             
             # 2. Borramos usando el ID que hemos recuperado
             # Necesitas añadir este método .delete() al Manager (ver abajo)
-            manager.delete_memory(target_memory.id)
+            await manager.delete_memory(target_memory.id)
             
             return (
                 f"🗑️ DELETED Memory ID {target_memory.id}\n"
@@ -137,3 +143,6 @@ class ForgetTool(BaseTool):
 
         except Exception as e:
             return f"❌ Error deleting memory: {str(e)}"
+
+    async def run(self, *args, **kwargs):
+        return await self._run(*args, **kwargs)

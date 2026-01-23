@@ -20,3 +20,4 @@ orjson
 requests
 email-validator
 fastapi-sso
+httpx

@@ -101,9 +101,14 @@ class FastTrackAgent:
                                     logger.info(f"   👉 Executing {tool_name} with {args}")
                                 
                                 # --- CRÍTICO: PUENTE ROJO/AZUL ---
-                                # Las tools de CrewAI son síncronas (bloqueantes).
-                                # Las envolvemos en to_thread para que corran en un thread aparte.
-                                result_content = await asyncio.to_thread(tool_instance.run, **args)
+                                # Check if the tool's run method is async
+                                import inspect
+                                if inspect.iscoroutinefunction(tool_instance.run):
+                                    # Async tool: await directly
+                                    result_content = await tool_instance.run(**args)
+                                else:
+                                    # Sync tool: wrap in to_thread
+                                    result_content = await asyncio.to_thread(tool_instance.run, **args)
                                 
                             except Exception as e:
                                 error_msg = f"Error executing {tool_name}: {str(e)}"

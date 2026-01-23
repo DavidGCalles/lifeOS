@@ -1,7 +1,7 @@
 import os
-import requests
+import httpx
 import logging
-from qdrant_client import QdrantClient, models
+from qdrant_client import AsyncQdrantClient, models
 from src.schemas.memory import EpisodicMemoryItem, EpisodicMemoryMetadata
 
 # Configure logging
@@ -13,22 +13,17 @@ class VectorMemoryManager:
     Repository Layer for Episodic Memory.
     Decouples the application logic from the specific database implementation (Qdrant).
     """
-    _client: QdrantClient = None
-    _collection_name: str = "episodic_memory_v1"
-
     def __init__(self, collection_name: str = "episodic_memory_v1"):
         self._collection_name = collection_name
-        self._initialize_client()
-        self._ensure_collection()
+        self._client = None
 
-    def _initialize_client(self):
+    async def _initialize_client(self):
         """
         Connects to Qdrant Service using a smart connection pattern.
         - If QDRANT_API_KEY is present, it assumes Cloud/HTTPS connection.
         - Otherwise, it falls back to local Docker/HTTP connection.
-        Uses Singleton pattern to avoid multiple connections.
         """
-        if VectorMemoryManager._client is None:
+        if self._client is None:
             host = os.getenv("QDRANT_HOST", "qdrant")
             port = int(os.getenv("QDRANT_PORT", 6333))
             api_key = os.getenv("QDRANT_API_KEY")
@@ -39,25 +34,25 @@ class VectorMemoryManager:
                 if api_key:
                     # Cloud Mode (assumes HTTPS)
                     logger.info(f"   -> Mode: Cloud, URL: {host}")
-                    VectorMemoryManager._client = QdrantClient(url=host, api_key=api_key)
+                    self._client = AsyncQdrantClient(url=host, api_key=api_key)
                 else:
                     # Docker Mode (Plain HTTP)
                     logger.info(f"   -> Mode: Docker, Host: {host}, Port: {port}")
-                    VectorMemoryManager._client = QdrantClient(host=host, port=port)
+                    self._client = AsyncQdrantClient(host=host, port=port)
             except Exception as e:
                 logger.error(f"Failed to connect to Qdrant: {e}", exc_info=True)
                 raise ConnectionError(f"Failed to connect to Qdrant: {e}")
 
-    def _ensure_collection(self):
+    async def _ensure_collection(self):
         """
         Checks if the collection exists and creates it if it doesn't.
         This operation is idempotent.
         """
         try:
-            self._client.get_collection(collection_name=self._collection_name)
+            await self._client.get_collection(collection_name=self._collection_name)
         except Exception:
             logger.info(f"Collection '{self._collection_name}' not found. Creating a new one...")
-            self._client.create_collection(
+            await self._client.create_collection(
                 collection_name=self._collection_name,
                 vectors_config=models.VectorParams(
                     size=768, 
@@ -67,7 +62,7 @@ class VectorMemoryManager:
             logger.info(f"✅ Collection '{self._collection_name}' created successfully.")
 
 
-    def _get_embedding(self, text: str) -> list[float]:
+    async def _get_embedding(self, text: str) -> list[float]:
         """
         Generates an embedding for the given text using the LiteLLM proxy.
         """
@@ -83,25 +78,29 @@ class VectorMemoryManager:
             "input": [text]
         }
         
-        try:
-            response = requests.post(embedding_url, headers=headers, json=data, timeout=30)
-            response.raise_for_status()
-            embedding_data = response.json().get("data")
-            if embedding_data and len(embedding_data) > 0:
-                return embedding_data[0].get("embedding")
-            raise ValueError("Invalid embedding response format from LiteLLM")
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error getting embedding from LiteLLM proxy at {embedding_url}: {e}", exc_info=True)
-            raise
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(embedding_url, headers=headers, json=data, timeout=30)
+                response.raise_for_status()
+                embedding_data = response.json().get("data")
+                if embedding_data and len(embedding_data) > 0:
+                    return embedding_data[0].get("embedding")
+                raise ValueError("Invalid embedding response format from LiteLLM")
+            except httpx.RequestError as e:
+                logger.error(f"Error getting embedding from LiteLLM proxy at {embedding_url}: {e}", exc_info=True)
+                raise
 
-    def add_memory(self, item: EpisodicMemoryItem) -> str:
+    async def add_memory(self, item: EpisodicMemoryItem) -> str:
         """
         Persists a strictly typed memory item into the vector store.
         """
-        vector = self._get_embedding(item.content)
+        if self._client is None:
+            await self._initialize_client()
+        await self._ensure_collection()
+        vector = await self._get_embedding(item.content)
         
         try:
-            self._client.upsert(
+            await self._client.upsert(
                 collection_name=self._collection_name,
                 points=[
                     models.PointStruct(
@@ -110,7 +109,8 @@ class VectorMemoryManager:
                         payload={
                             **item.metadata.model_dump(),
                             "content": item.content,
-                            "created_at": item.created_at
+                            "created_at": item.created_at,
+                            "created_by": item.created_by
                         }
                     )
                 ],
@@ -122,7 +122,7 @@ class VectorMemoryManager:
             logger.error(f"Error saving memory {item.id}: {e}", exc_info=True)
             raise e
 
-    def search_memory(
+    async def search_memory(
         self, 
         query: str, 
         filters: dict | None = None, 
@@ -131,7 +131,10 @@ class VectorMemoryManager:
         """
         Semantic search retrieving structured objects.
         """
-        query_vector = self._get_embedding(query)
+        if self._client is None:
+            await self._initialize_client()
+        await self._ensure_collection()
+        query_vector = await self._get_embedding(query)
         
         filter_conditions = []
         if filters:
@@ -143,7 +146,7 @@ class VectorMemoryManager:
         qdrant_filter = models.Filter(must=filter_conditions) if filter_conditions else None
 
         try:
-            result_obj = self._client.query_points(
+            result_obj = await self._client.query_points(
                 collection_name=self._collection_name,
                 query=query_vector,         # <-- CAMBIO 1: 'query_vector' ahora es 'query'
                 query_filter=qdrant_filter, # <-- Se mantiene 'query_filter'
@@ -162,7 +165,8 @@ class VectorMemoryManager:
                     id=point.id,
                     content=point.payload["content"],
                     created_at=point.payload["created_at"],
-                    metadata=metadata
+                    metadata=metadata,
+                    created_by=point.payload.get("created_by")
                 )
                 found_items.append(item)
             
@@ -173,12 +177,14 @@ class VectorMemoryManager:
             logger.error(f"Error searching memory for query '{query}': {e}", exc_info=True)
             return []
 
-    def delete_memory(self, memory_id: str):
+    async def delete_memory(self, memory_id: str):
         """
         Hard delete of a memory item by ID.
         """
+        if self._client is None:
+            await self._initialize_client()
         try:
-            self._client.delete(
+            await self._client.delete(
                 collection_name=self._collection_name,
                 points_selector=models.PointIdsList(points=[memory_id]),
             )
