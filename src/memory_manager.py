@@ -46,7 +46,7 @@ class VectorMemoryManager:
     async def _ensure_collection(self):
         """
         Checks if the collection exists and creates it if it doesn't.
-        This operation is idempotent.
+        Also ensures that the necessary payload indexes exist for filtering.
         """
         try:
             await self._client.get_collection(collection_name=self._collection_name)
@@ -60,6 +60,23 @@ class VectorMemoryManager:
                 ),
             )
             logger.info(f"✅ Collection '{self._collection_name}' created successfully.")
+
+        # --- FIX: Create Payload Indexes for Filtering ---
+        # Qdrant operations are idempotent, so we can run this safely on every startup.
+        # We index 'domain', 'type', and 'source' to allow fast filtering.
+        payload_indexes = ["domain", "type", "source"]
+        
+        for field in payload_indexes:
+            try:
+                await self._client.create_payload_index(
+                    collection_name=self._collection_name,
+                    field_name=field,
+                    field_schema=models.PayloadSchemaType.KEYWORD,
+                    wait=False
+                )
+            except Exception as e:
+                # If index already exists or another minor error, we just log it
+                logger.debug(f"Index check for '{field}': {e}")
 
 
     async def _get_embedding(self, text: str) -> list[float]:
