@@ -2,6 +2,7 @@ from .time_tool import TimeCheckTool
 from .calculator_tool import CalculatorTool
 from .search_tool import WebSearchTool
 from .memory_tool import RememberTool, RecallTool, ForgetTool
+from .profile_tool import SetCalendarIDTool
 
 # --- KITS DE HERRAMIENTAS ---
 MEMORY_KIT = [
@@ -16,8 +17,5 @@ TOOL_MAPPING = {
     'math': CalculatorTool(),
     'search': WebSearchTool(),
     'memory_core': MEMORY_KIT,
-    # Los siguientes son para mantener compatibilidad, pero se deprecian
-    'save_memory': RememberTool(),
-    'search_memory': RecallTool(),
-    'forget_memory': ForgetTool(),
+    'set_calendar_id': SetCalendarIDTool()
 }
