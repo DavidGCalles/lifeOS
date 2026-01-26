@@ -3,6 +3,7 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from src.tools.google_base import GoogleServiceFactory
 from src.identity_manager import UserContext
+import pytz
 
 class CalendarListInput(BaseModel):
     days_ahead: int = Field(7, description="How many days into the future to scan. Default is 7.")
@@ -91,3 +92,69 @@ class CalendarListTool(BaseTool):
                     "Make sure the user has SHARED their calendar with the Service Account email."
                 )
             return f"❌ Google API Error: {error_msg}"
+        
+# --- INPUT SCHEMA PARA ESCRITURA ---
+class CalendarAddInput(BaseModel):
+    summary: str = Field(..., description="Title of the event (e.g., 'Dentist Appointment').")
+    start_time: str = Field(..., description="Start time in format 'YYYY-MM-DD HH:MM' (24h). Example: '2025-10-25 14:30'.")
+    duration_minutes: int = Field(60, description="Duration in minutes. Default is 60.")
+    description: str = Field("", description="Optional details or description for the event.")
+
+# --- HERRAMIENTA DE ESCRITURA ---
+class CalendarAddTool(BaseTool):
+    name: str = "CalendarAddTool"
+    description: str = (
+        "Use this tool to SCHEDULE new events in the user's Calendar. "
+        "REQUIRES the user to have a configured Google Email. "
+        "Input date must be 'YYYY-MM-DD HH:MM'. The timezone is fixed to Europe/Madrid."
+    )
+    args_schema: type[BaseModel] = CalendarAddInput
+    
+    _current_user: UserContext | None = None
+
+    def set_context(self, user: UserContext):
+        self._current_user = user
+
+    def _run(self, summary: str, start_time: str, duration_minutes: int = 60, description: str = "") -> str:
+        # 1. Validación de Identidad
+        if not self._current_user or not self._current_user.calendar_id:
+            return "❌ Error: User email not configured. Use 'SetCalendarIDTool' first."
+
+        calendar_id = self._current_user.calendar_id
+        tz = pytz.timezone('Europe/Madrid')
+
+        try:
+            # 2. Parseo de Fechas (Asumiendo Input Local Madrid)
+            # El agente te pasará "2026-01-27 10:00". Nosotros le decimos a Python: "Esto es Madrid".
+            try:
+                dt_naive = datetime.strptime(start_time, "%Y-%m-%d %H:%M")
+                dt_start = tz.localize(dt_naive)
+            except ValueError:
+                return "❌ Error: Invalid date format. Please use 'YYYY-MM-DD HH:MM'."
+
+            dt_end = dt_start + timedelta(minutes=duration_minutes)
+
+            # 3. Construcción del Payload
+            event_body = {
+                'summary': summary,
+                'description': description,
+                'start': {
+                    'dateTime': dt_start.isoformat(),
+                    'timeZone': 'Europe/Madrid',
+                },
+                'end': {
+                    'dateTime': dt_end.isoformat(),
+                    'timeZone': 'Europe/Madrid',
+                },
+            }
+
+            # 4. Llamada a la API
+            service = GoogleServiceFactory.build_service('calendar', 'v3')
+            event = service.events().insert(calendarId=calendar_id, body=event_body).execute()
+
+            # 5. Confirmación
+            html_link = event.get('htmlLink', '#')
+            return f"✅ Event Scheduled: '{summary}' on {start_time} ({duration_minutes} min).\nLink: {html_link}"
+
+        except Exception as e:
+            return f"❌ Error scheduling event: {str(e)}"
