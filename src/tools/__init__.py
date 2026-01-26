@@ -6,17 +6,17 @@ from .profile_tool import SetCalendarIDTool
 from .calendar_tool import CalendarListTool, CalendarAddTool
 
 # --- KITS DE HERRAMIENTAS ---
-MEMORY_KIT = [
-    RememberTool(),
-    RecallTool(),
-    ForgetTool()
-]
+MEMORY_KIT = {
+    "save_memory": RememberTool(),
+    "search_memory": RecallTool(),
+    "forget_memory": ForgetTool()
+}
 
-CALENDAR_KIT = [
-    SetCalendarIDTool(),
-    CalendarListTool(),
-    CalendarAddTool()
-]
+CALENDAR_KIT = {
+    "set_email": SetCalendarIDTool(),
+    "calendar_list": CalendarListTool(),
+    "calendar_add": CalendarAddTool()
+}
 
 
 # Mapeo oficial: Nombre en YAML -> Instancia de la herramienta
@@ -25,5 +25,7 @@ TOOL_MAPPING = {
     'math': CalculatorTool(),
     'search': WebSearchTool(),
     'memory_core': MEMORY_KIT,
-    'calendar_core': CALENDAR_KIT
+    'calendar_core': CALENDAR_KIT,
+    **MEMORY_KIT,
+    **CALENDAR_KIT
 }

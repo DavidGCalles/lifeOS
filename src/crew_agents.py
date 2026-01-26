@@ -45,13 +45,21 @@ class LifeOSAgents:
         requested_tools = agent_data.get('tools', [])
         
         if requested_tools:
-            print(f"   🛠️  Equipando a {agent_key.upper()} con: {requested_tools}")
+            # print(f"   🛠️  Equipando a {agent_key.upper()} con: {requested_tools}")
             for tool_name in requested_tools:
                 tool_instance = TOOL_MAPPING.get(tool_name)
+                
                 if tool_instance:
-                    # Si es una lista (un "Kit"), la desempaquetamos
-                    if isinstance(tool_instance, list):
+                    # [NUEVO] Soporte para Diccionarios (Kits v2)
+                    if isinstance(tool_instance, dict):
+                        # Extraemos los valores (las herramientas) del diccionario
+                        agent_tools.extend(tool_instance.values())
+                    
+                    # Soporte Legacy para Listas (por si acaso queda alguna)
+                    elif isinstance(tool_instance, list):
                         agent_tools.extend(tool_instance)
+                    
+                    # Herramienta individual
                     else:
                         agent_tools.append(tool_instance)
                 else:

@@ -26,32 +26,30 @@ class CalendarListTool(BaseTool):
         self._current_user = user
 
     def _run(self, days_ahead: int = 7, max_results: int = 10) -> str:
-        # 1. Validación de Identidad
-        if not self._current_user:
-            return "❌ Error: System Error. User context is missing."
-        
-        if not self._current_user.calendar_id:
-            # Esta respuesta instruye al Agente para que pida el email
-            return (
-                "❌ Error: I don't have a Google Calendar email linked to this user yet. "
-                "Action Required: Ask the user for their Google email address and use "
-                "'SetCalendarIDTool' to save it."
-            )
+        # 1. Validación (igual)
+        if not self._current_user or not self._current_user.calendar_id:
+             return "❌ Error: User email not configured. Ask the user for it."
 
         calendar_id = self._current_user.calendar_id
-
+        
         try:
-            # 2. Construcción del Servicio
             service = GoogleServiceFactory.build_service('calendar', 'v3')
 
-            # 3. Cálculo de fechas (UTC)
-            now = datetime.utcnow()
-            time_min = now.isoformat() + 'Z'
-            time_max = (now + timedelta(days=days_ahead)).isoformat() + 'Z'
-
-            # 4. Llamada a Google API
-            # print(f"📅 Reading Calendar for: {calendar_id}") # Log opcional
+            # --- FIX CRÍTICO: TIME LOGIC (Start of Day vs Now) ---
+            tz = pytz.timezone('Europe/Madrid')
+            now_madrid = datetime.now(tz)
             
+            # Calculamos el inicio del día actual (00:00:00 Madrid)
+            # Así, si pides "agenda de hoy" a las 20:00, ves lo que tuviste por la mañana.
+            start_of_day_madrid = now_madrid.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            # Convertimos a UTC ISO string para Google (que espera Z al final)
+            time_min = start_of_day_madrid.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            
+            # Para el final, sumamos días al momento actual (para no cortar el rango)
+            time_max = (now_madrid + timedelta(days=days_ahead)).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            # -----------------------------------------------------
+
             events_result = service.events().list(
                 calendarId=calendar_id,
                 timeMin=time_min,
@@ -68,20 +66,26 @@ class CalendarListTool(BaseTool):
 
             # 5. Formateo de Salida
             output = [f"📅 Agenda for {calendar_id} (Next {days_ahead} days):"]
+                
             for event in events:
+                # Extraemos solo lo útil
                 start = event['start'].get('dateTime', event['start'].get('date'))
                 summary = event.get('summary', '(No Title)')
                 
-                # Limpieza de fecha
+                # Formateo de fecha amigable
+                start_str = start
                 if 'T' in start:
-                    dt_obj = datetime.fromisoformat(start)
-                    # Formato amigable: "Lunes, 20 Ene 10:00"
-                    start_str = dt_obj.strftime("%a, %d %b %H:%M")
-                else:
-                    start_str = f"{start} (All Day)"
+                    try:
+                        dt_obj = datetime.fromisoformat(start)
+                        # Formato: "Lun 26, 10:30"
+                        start_str = dt_obj.strftime("%a %d, %H:%M") 
+                    except:
+                        pass
+                
+                # Agregamos línea limpia
+                output.append(f"- {start_str}: {summary}")
 
-                output.append(f"- [{start_str}] {summary}")
-
+            # IMPORTANTE: Devolvemos UN SOLO STRING unido por saltos de línea
             return "\n".join(output)
 
         except Exception as e:

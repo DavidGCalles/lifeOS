@@ -24,29 +24,36 @@ class SetCalendarIDTool(BaseTool):
         """Inyecta el usuario actual (necesario para saber qué ID actualizar en DB)."""
         self._current_user = user
 
-    # 3. Implementación ASÍNCRONA real
     async def _run(self, email: str) -> str:
-        if not self._current_user:
-            return "❌ Error: No user context identified. Cannot save email."
+            if not self._current_user:
+                return "❌ Error: No user context identified."
 
-        # A. Validación
-        try:
-            valid = validate_email(email, check_deliverability=False)
-            normalized_email = valid.email
-        except EmailNotValidError as e:
-            return f"❌ Error: Invalid email format. {str(e)}"
+            # 1. Validación (igual)
+            try:
+                valid = validate_email(email, check_deliverability=False)
+                normalized_email = valid.email
+            except EmailNotValidError as e:
+                return f"❌ Error: Invalid email format. {str(e)}"
 
-        # B. Escritura Asíncrona (IdentityManager ya es async)
-        success = await IdentityManager.update_user(
-            self._current_user.telegram_id, 
-            {"calendar_id": normalized_email}
-        )
+            # 2. Actualización en DB
+            success = await IdentityManager.update_user(
+                self._current_user.telegram_id, 
+                {"calendar_id": normalized_email}
+            )
 
-        if success:
-            return (f"✅ Success: Linked email '{normalized_email}' to user '{self._current_user.name}'. "
-                    "You can now use calendar tools.")
-        else:
-            return "❌ Error: Database update failed."
+            if success:
+                # --- FIX CRÍTICO: ACTUALIZACIÓN EN MEMORIA ("HOT PATCH") ---
+                # Esto actualiza la referencia compartida que usan las otras tools
+                previous_email = self._current_user.calendar_id
+                self._current_user.calendar_id = normalized_email
+                
+                logger.info(f"🔄 Context Hot-Reload: {previous_email} -> {normalized_email}")
+                # -----------------------------------------------------------
+
+                return (f"✅ Success: Linked email '{normalized_email}'. "
+                        "I have updated my internal records instantly. You can now access the calendar.")
+            else:
+                return "❌ Error: Database update failed."
 
     # 4. Wrapper Async (Vital para FastTrackAgent)
     async def run(self, *args, **kwargs):

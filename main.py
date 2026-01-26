@@ -80,11 +80,25 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         respuesta_str = str(respuesta)
         
         # FASE 3: RESPUESTA
-        sent_message = await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"🤖 *[{target_agent}]*\n\n{respuesta_str}",
-            parse_mode='Markdown'
-        )
+        final_text = f"🤖 *[{target_agent}]*\n\n{respuesta_str}"
+
+        try:
+            # Intento 1: Enviar con Markdown (bonito)
+            sent_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=final_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logging.warning(f"⚠️ Markdown Error: {e}. Falling back to plain text.")
+            # Intento 2: Fallback a Texto Plano (seguro)
+            # Quitamos los asteriscos del header para que se vea limpio
+            clean_text = f"🤖 [{target_agent}]\n\n{respuesta_str}"
+            sent_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=clean_text,
+                parse_mode=None # Sin formato, a prueba de balas
+            )
 
         # LOGGING BOT
         await SessionManager.add_message(

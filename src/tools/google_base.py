@@ -18,46 +18,48 @@ class GoogleServiceFactory:
         'https://www.googleapis.com/auth/calendar',
         'https://www.googleapis.com/auth/calendar.events'
     ]
+    _services: dict[str, Resource] = {}
+    _creds: service_account.Credentials | None = None
 
-    @staticmethod
-    def get_credentials(scopes: list[str] | None = None) -> service_account.Credentials:
-        """
-        Loads credentials from the JSON file defined in env vars.
-        """
-        target_scopes = scopes or GoogleServiceFactory.DEFAULT_SCOPES
+    @classmethod
+    def get_credentials(cls, scopes: list[str] = None) -> service_account.Credentials:
+        """Carga credenciales (Lazy Loading + Caching)."""
+        if cls._creds:
+            return cls._creds
+
+        target_scopes = scopes or cls.DEFAULT_SCOPES
         creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
 
-        if not creds_path:
-            error_msg = "❌ CRITICAL: GOOGLE_APPLICATION_CREDENTIALS env var is not set."
-            logger.error(error_msg)
-            raise EnvironmentError(error_msg)
-
-        if not os.path.exists(creds_path):
-            error_msg = f"❌ CRITICAL: Credentials file not found at: {creds_path}"
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
+        if not creds_path or not os.path.exists(creds_path):
+            raise FileNotFoundError(f"❌ CRITICAL: Credentials not found at {creds_path}")
 
         try:
-            logger.info(f"🔑 Loading Google Credentials from: {creds_path}")
-            creds = service_account.Credentials.from_service_account_file(
-                creds_path, 
-                scopes=target_scopes
+            logger.info(f"🔑 Loading Google Credentials from disk...")
+            cls._creds = service_account.Credentials.from_service_account_file(
+                creds_path, scopes=target_scopes
             )
-            return creds
+            return cls._creds
         except Exception as e:
-            logger.error(f"❌ Failed to load Service Account credentials: {e}")
+            logger.error(f"❌ Failed to load credentials: {e}")
             raise
 
-    @staticmethod
-    def build_service(service_name: str, version: str = 'v3', scopes: list[str] | None = None) -> Resource:
-        """
-        Builds an authenticated API client (e.g., 'calendar', 'v3').
-        """
+    @classmethod
+    def build_service(cls, service_name: str, version: str = 'v3', scopes: list[str] = None) -> Resource:
+        """Devuelve un servicio autenticado (Reutiliza conexión si existe)."""
+        cache_key = f"{service_name}_{version}"
+        
+        if cache_key in cls._services:
+            return cls._services[cache_key]
+
         try:
-            creds = GoogleServiceFactory.get_credentials(scopes)
+            creds = cls.get_credentials(scopes)
+            # Construimos el servicio
             service = build(service_name, version, credentials=creds, cache_discovery=False)
-            logger.info(f"🔌 Google Service '{service_name} ({version})' built successfully.")
+            
+            # Lo guardamos en caché
+            cls._services[cache_key] = service
+            logger.info(f"🔌 Service '{cache_key}' built and cached.")
             return service
         except Exception as e:
-            logger.error(f"❌ Failed to build Google Service '{service_name}': {e}")
+            logger.error(f"❌ Failed to build service '{service_name}': {e}")
             raise
