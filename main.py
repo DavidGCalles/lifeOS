@@ -48,6 +48,10 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     if 'save_memory' in TOOL_MAPPING:
         TOOL_MAPPING['save_memory'].set_context(current_user)
+    if 'set_email' in TOOL_MAPPING:
+        TOOL_MAPPING['set_email'].set_context(current_user)
+    if 'calendar_list' in TOOL_MAPPING:
+        TOOL_MAPPING['calendar_list'].set_context(current_user)
 
     if current_user.role == UserRole.GUEST:
         await context.bot.send_message(chat_id=chat_id, text="⛔ Acceso Denegado.")
