@@ -35,20 +35,21 @@ class CalendarListTool(BaseTool):
         try:
             service = GoogleServiceFactory.build_service('calendar', 'v3')
 
-            # --- FIX CRÍTICO: TIME LOGIC (Start of Day vs Now) ---
+            # --- TIME LOGIC: Start of Day -> End of Target Day ---
             tz = pytz.timezone('Europe/Madrid')
             now_madrid = datetime.now(tz)
             
-            # Calculamos el inicio del día actual (00:00:00 Madrid)
-            # Así, si pides "agenda de hoy" a las 20:00, ves lo que tuviste por la mañana.
+            # Inicio del día (00:00:00)
             start_of_day_madrid = now_madrid.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            # Convertimos a UTC ISO string para Google (que espera Z al final)
-            time_min = start_of_day_madrid.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            # CORRECCIÓN: Time Max ahora parte del INICIO del día, no de 'now'.
+            # Si days_ahead=0, sumamos 1 día para cubrir hasta las 00:00 de mañana.
+            # Si days_ahead=7, cubrimos hoy + 7 días completos.
+            end_of_target_day = start_of_day_madrid + timedelta(days=days_ahead + 1)
             
-            # Para el final, sumamos días al momento actual (para no cortar el rango)
-            time_max = (now_madrid + timedelta(days=days_ahead)).astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
-            # -----------------------------------------------------
+            time_min = start_of_day_madrid.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            time_max = end_of_target_day.astimezone(pytz.utc).isoformat().replace('+00:00', 'Z')
+            # -------------------------------------------------------------------
 
             events_result = service.events().list(
                 calendarId=calendar_id,
