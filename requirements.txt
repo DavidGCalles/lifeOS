@@ -9,6 +9,11 @@ pytz
 qdrant-client
 google-cloud-firestore
 
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+
 
 #Dependencias de litellm. No instalamos litellm[proxy] porque nos mete en un bule con crewai-tools
 litellm
