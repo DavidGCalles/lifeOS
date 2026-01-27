@@ -3,7 +3,7 @@ from .calculator_tool import CalculatorTool
 from .search_tool import WebSearchTool
 from .memory_tool import RememberTool, RecallTool, ForgetTool
 from .profile_tool import SetCalendarIDTool
-from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool
+from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool, CalendarUpdateTool
 # --- KITS DE HERRAMIENTAS ---
 MEMORY_KIT = {
     "save_memory": RememberTool(),
@@ -15,7 +15,8 @@ CALENDAR_KIT = {
     "set_email": SetCalendarIDTool(),
     "calendar_list": CalendarListTool(),
     "calendar_add": CalendarAddTool(),
-    "calendar_remove": CalendarDeleteTool()
+    "calendar_remove": CalendarDeleteTool(),
+    "calendar_update": CalendarUpdateTool()
 }
 
 

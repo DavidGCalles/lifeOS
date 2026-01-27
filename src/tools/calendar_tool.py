@@ -246,3 +246,118 @@ class CalendarDeleteTool(BaseTool):
 
         except Exception as e:
             return f"❌ Error deleting event: {str(e)}"
+        
+# --- INPUT SCHEMA PARA UPDATE ---
+class CalendarUpdateInput(BaseModel):
+    query: str = Field(..., description="Search query to identify the unique event to update (e.g., 'Dentist').")
+    new_summary: str | None = Field(None, description="New title for the event.")
+    new_start_time: str | None = Field(None, description="New start time 'YYYY-MM-DD HH:MM'. Timezone is Europe/Madrid.")
+    new_duration: int | None = Field(None, description="New duration in minutes.")
+    new_description: str | None = Field(None, description="New description text.")
+
+class CalendarUpdateTool(BaseTool):
+    name: str = "CalendarUpdateTool"
+    description: str = (
+        "Use this tool to MODIFY an existing event. "
+        "First, it searches for the event. If found unique, it updates ONLY the provided fields. "
+        "Useful for rescheduling or renaming events."
+    )
+    args_schema: type[BaseModel] = CalendarUpdateInput
+    
+    _current_user: UserContext | None = None
+
+    def set_context(self, user: UserContext):
+        self._current_user = user
+
+    def _run(self, query: str, new_summary: str = None, new_start_time: str = None, new_duration: int = None, new_description: str = None) -> str:
+        if not self._current_user or not self._current_user.calendar_id:
+            return "❌ Error: User email not configured."
+
+        calendar_id = self._current_user.calendar_id
+        
+        try:
+            service = GoogleServiceFactory.build_service('calendar', 'v3')
+            tz = pytz.timezone('Europe/Madrid')
+            
+            # 1. BÚSQUEDA (Ventana de 30 días)
+            now = datetime.now(tz)
+            time_min = now.isoformat()
+            time_max = (now + timedelta(days=30)).isoformat()
+
+            events_result = service.events().list(
+                calendarId=calendar_id,
+                timeMin=time_min,
+                timeMax=time_max,
+                q=query,
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+
+            events = events_result.get('items', [])
+
+            # 2. GESTIÓN DE AMBIGÜEDAD
+            if not events:
+                return f"⚠️ No events found matching '{query}' to update."
+            
+            if len(events) > 1:
+                conflict_list = [f"- {e.get('summary')} at {e['start'].get('dateTime')}" for e in events]
+                return (
+                    f"🛑 AMBIGUITY: Found {len(events)} matches. Please be more specific.\n" + 
+                    "\n".join(conflict_list)
+                )
+
+            # 3. PREPARAR EL PATCH
+            target_event = events[0]
+            event_id = target_event['id']
+            changes = {}
+
+            if new_summary:
+                changes['summary'] = new_summary
+            
+            if new_description:
+                changes['description'] = new_description
+
+            if new_start_time:
+                # Recalcular start/end completo
+                try:
+                    dt_naive = datetime.strptime(new_start_time, "%Y-%m-%d %H:%M")
+                    dt_start = tz.localize(dt_naive)
+                    
+                    # Si no pasan nueva duración, calculamos la antigua
+                    if new_duration:
+                        duration = new_duration
+                    else:
+                        orig_start = datetime.fromisoformat(target_event['start']['dateTime'])
+                        orig_end = datetime.fromisoformat(target_event['end']['dateTime'])
+                        duration = (orig_end - orig_start).seconds // 60
+
+                    dt_end = dt_start + timedelta(minutes=duration)
+
+                    changes['start'] = {'dateTime': dt_start.isoformat(), 'timeZone': 'Europe/Madrid'}
+                    changes['end'] = {'dateTime': dt_end.isoformat(), 'timeZone': 'Europe/Madrid'}
+                
+                except ValueError:
+                    return "❌ Error: Invalid date format. Use 'YYYY-MM-DD HH:MM'."
+
+            elif new_duration:
+                # Solo cambia duración, mantenemos start original
+                orig_start = datetime.fromisoformat(target_event['start']['dateTime'])
+                dt_end = orig_start + timedelta(minutes=new_duration)
+                changes['end'] = {'dateTime': dt_end.isoformat(), 'timeZone': 'Europe/Madrid'}
+
+            if not changes:
+                return "⚠️ No changes requested. Provide at least one new value."
+
+            # 4. EJECUTAR UPDATE
+            updated_event = service.events().patch(
+                calendarId=calendar_id,
+                eventId=event_id,
+                body=changes
+            ).execute()
+
+            # Extraemos la hora actualizada para confirmar
+            final_start = updated_event.get('start', {}).get('dateTime', 'Unknown')
+            return f"✅ UPDATED: '{updated_event.get('summary')}' is now at {final_start}."
+
+        except Exception as e:
+            return f"❌ Update Failed: {str(e)}"

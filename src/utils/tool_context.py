@@ -9,7 +9,8 @@ CONTEXT_NEEDED = [
     "set_email",
     "calendar_list",
     "calendar_add",
-    "calendar_remove"  # La nueva que acabamos de crear
+    "calendar_remove",
+    "calendar_update"
 ]
 
 logger = logging.getLogger(__name__)
