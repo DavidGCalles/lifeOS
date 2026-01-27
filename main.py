@@ -12,7 +12,7 @@ from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
-from src.tools import TOOL_MAPPING
+from src.utils.tool_context import inject_runtime_context
 
 # Configuración de Logs
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -46,8 +46,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     current_user = await IdentityManager.get_user(user_id)
     logging.info("👤 User: %s (%s)", current_user.name, current_user.role)
 
-    if 'save_memory' in TOOL_MAPPING:
-        TOOL_MAPPING['save_memory'].set_context(current_user)
+    # 2. Inyección de Contexto en Herramientas
+    inject_runtime_context(current_user)
 
     if current_user.role == UserRole.GUEST:
         await context.bot.send_message(chat_id=chat_id, text="⛔ Acceso Denegado.")
@@ -74,11 +74,25 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         respuesta_str = str(respuesta)
         
         # FASE 3: RESPUESTA
-        sent_message = await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"🤖 *[{target_agent}]*\n\n{respuesta_str}",
-            parse_mode='Markdown'
-        )
+        final_text = f"🤖 *[{target_agent}]*\n\n{respuesta_str}"
+
+        try:
+            # Intento 1: Enviar con Markdown (bonito)
+            sent_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=final_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logging.warning(f"⚠️ Markdown Error: {e}. Falling back to plain text.")
+            # Intento 2: Fallback a Texto Plano (seguro)
+            # Quitamos los asteriscos del header para que se vea limpio
+            clean_text = f"🤖 [{target_agent}]\n\n{respuesta_str}"
+            sent_message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=clean_text,
+                parse_mode=None # Sin formato, a prueba de balas
+            )
 
         # LOGGING BOT
         await SessionManager.add_message(

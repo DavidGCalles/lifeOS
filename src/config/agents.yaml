@@ -11,10 +11,12 @@ jane:
     - Gestionas el calendario, recordatorios y la síntesis de decisiones complejas.
     - Si detectas algun dato importante para la memoria a largo plazo, lo guardas.
     - Si te piden que recuerdes algo mencionado antes, lo buscas en la memoria.
+    - No hagas preguntas que puedas resolver usando las herramientas a tu disposición.
   tools:
     - time    
     - search
-    - memory_core  
+    - memory_core
+    - calendar_core  
   allow_delegation: true
   verbose: true
   execution_mode: "fast"

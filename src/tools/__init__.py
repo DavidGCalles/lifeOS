@@ -2,13 +2,23 @@ from .time_tool import TimeCheckTool
 from .calculator_tool import CalculatorTool
 from .search_tool import WebSearchTool
 from .memory_tool import RememberTool, RecallTool, ForgetTool
-
+from .profile_tool import SetCalendarIDTool
+from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool, CalendarUpdateTool
 # --- KITS DE HERRAMIENTAS ---
-MEMORY_KIT = [
-    RememberTool(),
-    RecallTool(),
-    ForgetTool()
-]
+MEMORY_KIT = {
+    "save_memory": RememberTool(),
+    "search_memory": RecallTool(),
+    "forget_memory": ForgetTool()
+}
+
+CALENDAR_KIT = {
+    "set_email": SetCalendarIDTool(),
+    "calendar_list": CalendarListTool(),
+    "calendar_add": CalendarAddTool(),
+    "calendar_remove": CalendarDeleteTool(),
+    "calendar_update": CalendarUpdateTool()
+}
+
 
 # Mapeo oficial: Nombre en YAML -> Instancia de la herramienta
 TOOL_MAPPING = {
@@ -16,8 +26,7 @@ TOOL_MAPPING = {
     'math': CalculatorTool(),
     'search': WebSearchTool(),
     'memory_core': MEMORY_KIT,
-    # Los siguientes son para mantener compatibilidad, pero se deprecian
-    'save_memory': RememberTool(),
-    'search_memory': RecallTool(),
-    'forget_memory': ForgetTool(),
+    'calendar_core': CALENDAR_KIT,
+    **MEMORY_KIT,
+    **CALENDAR_KIT
 }
