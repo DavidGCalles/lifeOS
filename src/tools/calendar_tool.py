@@ -163,3 +163,86 @@ class CalendarAddTool(BaseTool):
 
         except Exception as e:
             return f"❌ Error scheduling event: {str(e)}"
+
+# --- INPUT SCHEMA PARA BORRADO ---
+class CalendarDeleteInput(BaseModel):
+    query: str = Field(..., description="Text to search for matching event to delete (e.g., 'Dentist'). Be specific.")
+
+# --- HERRAMIENTA DE BORRADO ---
+class CalendarDeleteTool(BaseTool):
+    name: str = "CalendarDeleteTool"
+    description: str = (
+        "Use this tool to DELETE an existing event from the user's Calendar. "
+        "It searches for upcoming events (next 30 days) matching the query. "
+        "SAFETY: If multiple events match, it will fail and ask for clarification to avoid accidents."
+    )
+    args_schema: type[BaseModel] = CalendarDeleteInput
+    
+    _current_user: UserContext | None = None
+
+    def set_context(self, user: UserContext):
+        self._current_user = user
+
+    def _run(self, query: str) -> str:
+        # 1. Validación de Identidad
+        if not self._current_user or not self._current_user.calendar_id:
+            return "❌ Error: User email not configured. Cannot access calendar."
+
+        calendar_id = self._current_user.calendar_id
+        
+        try:
+            service = GoogleServiceFactory.build_service('calendar', 'v3')
+            
+            # 2. Definir rango de búsqueda (Próximos 30 días)
+            tz = pytz.timezone('Europe/Madrid')
+            now_madrid = datetime.now(tz)
+            
+            time_min = now_madrid.isoformat()
+            # 30 días de ventana de seguridad
+            time_max = (now_madrid + timedelta(days=30)).isoformat()
+
+            # 3. Buscar eventos candidatos (Query 'q' filtra por texto libre en title/description)
+            events_result = service.events().list(
+                calendarId=calendar_id,
+                timeMin=time_min,
+                timeMax=time_max,
+                q=query, 
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+
+            events = events_result.get('items', [])
+
+            # 4. Lógica de Seguridad (Ambiguity Check)
+            if not events:
+                return f"⚠️ No matching events found for '{query}' in the next 30 days."
+
+            if len(events) > 1:
+                # Conflicto: Devolvemos lista para que el Agente pida clarificación
+                conflict_list = []
+                for e in events:
+                    start = e['start'].get('dateTime', e['start'].get('date'))
+                    summary = e.get('summary', '(No Title)')
+                    conflict_list.append(f"- {summary} at {start}")
+                
+                return (
+                    f"🛑 AMBIGUITY ERROR: Found {len(events)} events matching '{query}'. "
+                    "I will not delete anything to be safe. Please refine your query.\n"
+                    f"Matches found:\n" + "\n".join(conflict_list)
+                )
+
+            # 5. Ejecución (Solo si hay EXACTAMENTE 1 coincidencia)
+            target_event = events[0]
+            event_id = target_event['id']
+            event_summary = target_event.get('summary', 'Unknown')
+            event_time = target_event['start'].get('dateTime', 'Unknown')
+
+            service.events().delete(
+                calendarId=calendar_id,
+                eventId=event_id
+            ).execute()
+
+            return f"🗑️ DELETED: '{event_summary}' at {event_time}."
+
+        except Exception as e:
+            return f"❌ Error deleting event: {str(e)}"
