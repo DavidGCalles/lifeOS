@@ -2,6 +2,9 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from email_validator import validate_email, EmailNotValidError
 from src.identity_manager import IdentityManager, UserContext
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 1. Definimos el Schema (Input)
 class SetEmailInput(BaseModel):
