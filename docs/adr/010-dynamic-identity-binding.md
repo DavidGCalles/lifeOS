@@ -38,3 +38,18 @@ Currently, this mapping is hardcoded or manually edited in Firestore/JSON. This 
 
 * **Interaction Friction:** The first time a user asks for a calendar task, there will be a multi-step dialogue to set up permissions.
 * **Privacy:** The bot technically has access to read the calendar events provided by the shared permissions.
+
+## Addendum: Implementation Validation & CRUD Expansion
+**Date:** 2026-01-27
+
+### Context
+The implementation of the **Calendar Toolkit** (List, Add, Delete, Update) has been completed to validate the proposed architecture. During development, a coupling issue was identified in `main.py` where context injection required manual modification of the controller for each new tool.
+
+### Refactor & Validation Results
+To address the coupling, a **Centralized Context Injection** pattern (`src/utils/tool_context.py`) was implemented.
+
+1.  **Architecture Validation:** The complete CRUD cycle validates the *Service Account + Lazy Binding* strategy. The agent successfully acts on behalf of the user using the persistent link in Firestore.
+2.  **Scalability:** The new architecture allows adding *any* tool requiring user identity (e.g., Google Drive, Gmail, Spotify) by simply registering it in the `CONTEXT_NEEDED` list. `main.py` remains closed to modification (Open/Closed Principle).
+3.  **Safety First:** The "Delete" and "Update" tools implement strict ambiguity checks (refusing to act on >1 match), proving that autonomous agents can manage sensitive data safely if constraints are enforced at the tool level.
+
+**Conclusion:** The core architecture is verified. The path is now open for the rapid integration of the rest of the Google Workspace ecosystem.
