@@ -12,7 +12,7 @@ from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
-from src.tools import TOOL_MAPPING
+from src.utils.tool_context import inject_runtime_context
 
 # Configuración de Logs
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -46,16 +46,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     current_user = await IdentityManager.get_user(user_id)
     logging.info("👤 User: %s (%s)", current_user.name, current_user.role)
 
-    if 'save_memory' in TOOL_MAPPING:
-        TOOL_MAPPING['save_memory'].set_context(current_user)
-    if 'set_email' in TOOL_MAPPING:
-        TOOL_MAPPING['set_email'].set_context(current_user)
-    if 'calendar_list' in TOOL_MAPPING:
-        TOOL_MAPPING['calendar_list'].set_context(current_user)
-    if 'calendar_add' in TOOL_MAPPING:
-        TOOL_MAPPING['calendar_add'].set_context(current_user)
-    if 'calendar_remove' in TOOL_MAPPING:
-        TOOL_MAPPING['calendar_remove'].set_context(current_user)
+    # 2. Inyección de Contexto en Herramientas
+    inject_runtime_context(current_user)
 
     if current_user.role == UserRole.GUEST:
         await context.bot.send_message(chat_id=chat_id, text="⛔ Acceso Denegado.")
