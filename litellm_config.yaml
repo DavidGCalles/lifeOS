@@ -72,15 +72,29 @@ model_list:
       model: gemini/text-embedding-004
       api_key: os.environ/GEMINI_API_KEY
 
+  # ==========================================================
+  # Local LLM (opcional)
+  # ==========================================================
+  - model_name: local-fallback
+    litellm_params:
+      # 'openai/' tells LiteLLM to use the generic OpenAI format
+      model: openai/local-model 
+      # Points to the host machine from inside the container
+      api_base: "http://host.docker.internal:1234/v1"
+      api_key: "lm-studio"
+      tpm: 1000000
+      rpm: 1000
+
 router_settings:
   fallbacks:
     # Agentes: Si Flash Lite (10 RPM) se llena, pasamos a Flash (5 RPM).
     # Es un carril lento, pero seguro.
-    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash"]
+    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "local-fallback"]
+
     
     # Router: Tenemos mucho ancho de banda (30 RPM x 4 modelos).
     # Ordenamos por "inteligencia descendente".
-    - "router-model": ["gemini/gemma-3-4b-it", "gemini/gemma-3-1b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-27b-it", "gemini/gemini-2.5-flash"]
+    - "router-model": ["gemini/gemma-3-4b-it", "gemini/gemma-3-1b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-27b-it", "local-fallback"]
   
   allowed_fails: 1
-  cooldown_time: 1 # Si falla, espera 1s y prueba el siguiente
+  cooldown_time: 1 
