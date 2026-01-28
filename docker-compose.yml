@@ -11,6 +11,9 @@ services:
       # Le decimos a tu app dónde está el cerebro ahora
       - OPENAI_API_KEY=sk-fake-key-bypass
       - GOOGLE_APPLICATION_CREDENTIALS=/app/src/config/credentials.json
+      - LOCAL_LLM_URL=http://host.docker.internal:1234/v1 
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
 
@@ -21,6 +24,8 @@ services:
       - "4000:4000"
     volumes:
       - ./litellm_config.yaml:/app/config.yaml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     # Arranca con debug para ver si saltan los fallbacks
