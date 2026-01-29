@@ -16,7 +16,8 @@ jane:
     - time    
     - search
     - memory_core
-    - calendar_core  
+    - calendar_core
+    - user_governance
   allow_delegation: true
   verbose: true
   execution_mode: "fast"

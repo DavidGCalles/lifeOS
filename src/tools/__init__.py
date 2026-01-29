@@ -4,6 +4,7 @@ from .search_tool import WebSearchTool
 from .memory_tool import RememberTool, RecallTool, ForgetTool
 from .profile_tool import SetCalendarIDTool
 from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool, CalendarUpdateTool
+from .governance_tool import UserGovernanceTool
 # --- KITS DE HERRAMIENTAS ---
 MEMORY_KIT = {
     "save_memory": RememberTool(),
@@ -28,5 +29,6 @@ TOOL_MAPPING = {
     'memory_core': MEMORY_KIT,
     'calendar_core': CALENDAR_KIT,
     **MEMORY_KIT,
-    **CALENDAR_KIT
+    **CALENDAR_KIT,
+    'user_governance': UserGovernanceTool()
 }
