@@ -1,0 +1,41 @@
+model_list:
+  # ==========================================================
+  # MODO 100% LOCAL (LM Studio / Ollama)
+  # Redirigimos TODOS los roles a la máquina local.
+  # ==========================================================
+
+  # 1. Agentes con Herramientas (Reemplaza a Gemini Flash)
+  - model_name: crewai-proxy
+    litellm_params:
+      # 'openai/' fuerza el protocolo estándar compatible con LM Studio/Ollama
+      model: openai/local-model
+      # Host Docker Internal permite ver tu PC desde el contenedor
+      api_base: "http://host.docker.internal:1234/v1"
+      api_key: "lm-studio" # Clave dummy
+      tpm: 1000000         # Límites virtuales altos
+      rpm: 1000
+
+  # 2. Router / Clasificador (Reemplaza a Gemma)
+  - model_name: router-model
+    litellm_params:
+      model: openai/local-model
+      api_base: "http://host.docker.internal:1234/v1"
+      api_key: "lm-studio"
+      tpm: 1000000
+      rpm: 1000
+
+  # 3. Embeddings (Opcional - Si tienes embeddings locales)
+  # Si no tienes un modelo de embeddings local cargado, 
+  # LifeOS fallará al intentar guardar memoria. 
+  # Para chat puro sin memoria a largo plazo, esto puede dar error.
+  # Lo ideal es dejar el de Gemini solo para embeddings o levantar un
+  # contenedor de embeddings local (ej. 'text-embedding-inference').
+  - model_name: text-embedding-004
+    litellm_params:
+      model: gemini/text-embedding-004
+      api_key: os.environ/GEMINI_API_KEY
+
+router_settings:
+  fallbacks: [] # Sin fallbacks, es todo o nada.
+  allowed_fails: 3
+  cooldown_time: 1
