@@ -10,7 +10,8 @@ CONTEXT_NEEDED = [
     "calendar_list",
     "calendar_add",
     "calendar_remove",
-    "calendar_update"
+    "calendar_update",
+    "user_governance"
 ]
 
 logger = logging.getLogger(__name__)

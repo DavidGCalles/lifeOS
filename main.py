@@ -23,6 +23,7 @@ TELEGRAM_TOKEN = load_credentials()
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 RUN_MODE = os.getenv('RUN_MODE', 'polling').lower() # Default a polling en local
 PORT = int(os.getenv('PORT', '8080')) 
+ADMIN_USER_ID = os.getenv('ADMIN_USER_ID') 
 
 session_manager = SessionManager()
 orchestrator = CrewOrchestrator(session_manager=session_manager)
@@ -44,14 +45,60 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     # 1. Identidad
     current_user = await IdentityManager.get_user(user_id)
+    
+    # --- 🚧 THE TRAP (INTERCEPTION PROTOCOL) 🚧 ---
+    if current_user.role == UserRole.BLOCKED:
+        logging.info(f"🚫 Blocked user {user_id} attempted contact. Silenced.")
+        return # Fallo silencioso. No gastamos cómputo ni ancho de banda.
+
+    if current_user.role == UserRole.PENDING:
+        # 1. Capturar metadatos para el dossier
+        username = update.effective_user.username or "NoUsername"
+        first_name = update.effective_user.first_name or "Unknown"
+        
+        logging.warning(f"🚨 INTRUSION DETECTED: {first_name} (@{username}) - ID: {user_id}")
+
+        # 2. Actualizar el contexto en memoria para el registro
+        current_user.name = first_name
+        current_user.description = f"@{username}" # Guardamos el handle como descripción
+        
+        # 3. Fichar al sujeto en Firestore (para poder promoverlo luego)
+        await IdentityManager.register_user(current_user)
+        
+        # 4. Notificar al Intruso (Protocolo de Seguridad)
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text="🛡️ **Security Protocol Active**\n\nIdentity verification required. Access is restricted pending Administrator approval.",
+            parse_mode='Markdown'
+        )
+        
+        # 5. Alertar al SOBERANO (Tú)
+        if ADMIN_USER_ID:
+            alert_text = (
+                f"🚨 **INTRUSION ALERT**\n\n"
+                f"**Name:** {first_name}\n"
+                f"**Handle:** @{username}\n"
+                f"**ID:** `{user_id}`\n\n"
+                f"To authorize, reply:\n"
+                f"`Authorize {user_id} as FAMILY`"
+            )
+            try:
+                await context.bot.send_message(chat_id=ADMIN_USER_ID, text=alert_text, parse_mode='Markdown')
+            except Exception as e:
+                logging.error(f"❌ Failed to send alert to ADMIN_USER_ID: {e}")
+        
+        return # 🛑 DETENER EJECUCIÓN AQUÍ. No invocar agentes.
+    
+    # --- END TRAP ---
+
     logging.info("👤 User: %s (%s)", current_user.name, current_user.role)
 
     # 2. Inyección de Contexto en Herramientas
     inject_runtime_context(current_user)
 
-    if current_user.role == UserRole.GUEST:
-        await context.bot.send_message(chat_id=chat_id, text="⛔ Acceso Denegado.")
-        return
+    # Nota: Eliminamos el check antiguo de GUEST porque PENDING ya cubre ese caso.
+    # Los roles EXTERNAL o GUEST (si se asignan manualmente) pasarán a los agentes,
+    # y será el agente quien decida si tiene permisos para usar herramientas sensibles.
 
     user_text = update.message.text
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -86,12 +133,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         except Exception as e:
             logging.warning(f"⚠️ Markdown Error: {e}. Falling back to plain text.")
             # Intento 2: Fallback a Texto Plano (seguro)
-            # Quitamos los asteriscos del header para que se vea limpio
             clean_text = f"🤖 [{target_agent}]\n\n{respuesta_str}"
             sent_message = await context.bot.send_message(
                 chat_id=chat_id,
                 text=clean_text,
-                parse_mode=None # Sin formato, a prueba de balas
+                parse_mode=None
             )
 
         # LOGGING BOT
@@ -150,13 +196,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Health Check (Para Cloud Run y para saber que Uvicorn vive)
+# Health Check
 @app.get("/")
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "mode": RUN_MODE}
 
-# Webhook Handler (Solo usado en Cloud Run)
+# Webhook Handler
 @app.post("/telegram")
 async def telegram_webhook(request: Request):
     if RUN_MODE != 'webhook':
