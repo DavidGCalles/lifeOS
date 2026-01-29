@@ -106,7 +106,7 @@ class CrewOrchestrator:
             decision = await asyncio.to_thread(routing_crew.kickoff)
             return str(decision).strip().upper()
 
-    async def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None):
+    async def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None, extra_context: str | None = None):
         """
         Ejecuta al agente seleccionado. Si es Fast, await directo. Si es Crew, thread.
         """
@@ -124,11 +124,15 @@ class CrewOrchestrator:
 
         # --- CONSTRUCCIÓN DEL CONTEXTO ---
         context_parts = []
+        
+        # [NEW] Inject Reply Context FIRST to prioritize it
+        if extra_context:
+             context_parts.append(f"🔥 ATTENTION: {extra_context}\n")
+        
         if user:
             context_parts.append(self._format_identity_context(user))
 
         if chat_id:
-            # UPDATE: Añadido await porque get_context ahora es async (Issue #005)
             context_history = await self.session_manager.get_context(chat_id)
             if context_history:
                 print(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
