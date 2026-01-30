@@ -3,7 +3,10 @@ Docstring for test_llm
 '''
 import os
 import sys
+import logging
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 # --- CONFIGURACIÓN ---
 # 1. ¿Dónde está escuchando tu servicio de LiteLLM?
@@ -15,7 +18,7 @@ BASE_URL = os.getenv("LITELLM_URL", "http://litellm:4000")
 # aunque la auth real la hace el servicio con Google.
 API_KEY = "sk-cualquier-cosa-porque-usamos-litellm"
 
-print(f"--- Test de Conexión: Cliente OpenAI -> Servicio LiteLLM ({BASE_URL}) ---")
+logger.info(f"--- Test de Conexión: Cliente OpenAI -> Servicio LiteLLM ({BASE_URL}) ---")
 
 try:
     # 3. Iniciamos el cliente OFICIAL de OpenAI
@@ -39,13 +42,13 @@ try:
     )
 
     # 5. Resultado
-    print("✅ CONEXIÓN EXITOSA")
-    print("Respuesta:", response.choices[0].message.content)
+    logger.info("✅ CONEXIÓN EXITOSA")
+    logger.info("Respuesta: %s", response.choices[0].message.content)
 
 except Exception as e:
-    print("🔥 FALLO DE CONEXIÓN")
-    print(f"Error: {e}")
-    print("\nPosibles causas:")
-    print("1. El servicio de LiteLLM no está corriendo o no es accesible en esa URL.")
-    print("2. El nombre del modelo no coincide con lo que LiteLLM espera.")
+    logger.error("🔥 FALLO DE CONEXIÓN")
+    logger.error("Error: %s", e)
+    logger.error("\nPosibles causas:")
+    logger.error("1. El servicio de LiteLLM no está corriendo o no es accesible en esa URL.")
+    logger.error("2. El nombre del modelo no coincide con lo que LiteLLM espera.")
     sys.exit(1)

@@ -15,8 +15,9 @@ from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
 
-# Configuración de Logs
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Centralized logging configuration
+from src.logging_config import configure_logging
+configure_logging()
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Configuración

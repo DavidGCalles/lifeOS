@@ -11,6 +11,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def test_routing():
     '''Prueba el enrutador ASÍNCRONO.'''
@@ -25,22 +28,22 @@ async def test_routing():
         ("Agenda para hoy", "JANE"),
     ]
     
-    print("\n>>> 🚦 TESTEANDO DISPATCHER (ASYNC ROUTER)...")
+    logger.info("\n>>> 🚦 TESTEANDO DISPATCHER (ASYNC ROUTER)...")
     
     for message, expected in scenarios:
-        print(f"\n📩 Input: '{message}'")
-        print("   Thinking...")
+        logger.info(f"\n📩 Input: '{message}'")
+        logger.info("   Thinking...")
         
         # AHORA USAMOS AWAIT
         result = await orchestrator.route_request(message)
         
-        print(f"   👉 Decisión: {result}")
+        logger.info(f"   👉 Decisión: {result}")
         
         # Verificación laxa (por si devuelve JANE (CHIEF) en vez de JANE)
         if expected in result:
-            print("   ✅ CORRECTO")
+            logger.info("   ✅ CORRECTO")
         else:
-            print(f"   ⚠️ DIVERGENCIA (Esperaba {expected})")
+            logger.warning(f"   ⚠️ DIVERGENCIA (Esperaba {expected})")
 
 if __name__ == "__main__":
     asyncio.run(test_routing())

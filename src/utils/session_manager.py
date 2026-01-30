@@ -3,8 +3,10 @@ from typing import Any
 from google.cloud import firestore
 from google.cloud.firestore import AsyncClient, Query 
 from dotenv import load_dotenv
+import logging
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 class SessionManager:
     """
@@ -26,7 +28,7 @@ class SessionManager:
                 else:
                     cls._firestore_client = AsyncClient()
             except Exception as e:
-                print(f"❌ SESSION ERROR: No se pudo conectar a Firestore (Async): {e}")
+                logger.error(f"❌ SESSION ERROR: No se pudo conectar a Firestore (Async): {e}")
                 cls._firestore_client = None
         return cls._firestore_client
 
@@ -71,7 +73,7 @@ class SessionManager:
             else:
                 await session_ref.collection('messages').add(doc_data)
         except Exception as e:
-            print(f"⚠️ Error guardando mensaje en Firestore: {e}")
+            logger.warning(f"⚠️ Error guardando mensaje en Firestore: {e}")
 
     @classmethod
     async def get_context(cls, chat_id: int | str, limit: int = 15) -> list[dict[str, Any]]:
@@ -108,7 +110,7 @@ class SessionManager:
             return messages[::-1]
 
         except Exception as e:
-            print(f"⚠️ Error recuperando contexto: {e}")
+            logger.warning(f"⚠️ Error recuperando contexto: {e}")
             return []
 
     @classmethod
@@ -129,5 +131,5 @@ class SessionManager:
                 return doc.to_dict()
             return None
         except Exception as e:
-            print(f"⚠️ Error retrieving message metadata for {message_id}: {e}")
+            logger.warning(f"⚠️ Error retrieving message metadata for {message_id}: {e}")
             return None

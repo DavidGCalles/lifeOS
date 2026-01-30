@@ -11,18 +11,20 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.tools.calendar_tool import CalendarAddTool
 from src.identity_manager import UserContext, UserRole
 
-logging.basicConfig(level=logging.INFO)
+from src.logging_config import configure_logging
+configure_logging(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def test_calendar_write():
-    print("\n>>> 📅 TEST: CalendarAddTool (Writer - Same Day)")
+    logger.info("\n>>> 📅 TEST: CalendarAddTool (Writer - Same Day)")
 
     # 1. Configuración (Requiere la variable de entorno)
     real_email = os.getenv("TEST_CALENDAR_ID")
     if not real_email:
-        print("❌ SKIPPING: Export TEST_CALENDAR_ID='tu_email@gmail.com' first.")
+        logger.warning("❌ SKIPPING: Export TEST_CALENDAR_ID='tu_email@gmail.com' first.")
         return
 
-    print(f"   👤 Target: {real_email}")
+    logger.info(f"   👤 Target: {real_email}")
     
     # Contexto Mock
     user = UserContext(telegram_id="999", name="Tester", role=UserRole.ADMIN, calendar_id=real_email)
@@ -35,7 +37,7 @@ def test_calendar_write():
     target_dt = now + timedelta(hours=1) 
     target_str = target_dt.strftime("%Y-%m-%d %H:%M")
     
-    print(f"   🕒 Scheduling event for TODAY: {target_str}")
+    logger.info(f"   🕒 Scheduling event for TODAY: {target_str}")
 
     # 3. Ejecución
     result = tool._run(
@@ -45,13 +47,13 @@ def test_calendar_write():
         description="Event created automatically by the CalendarAddTool test suite (ADR-010-005)."
     )
 
-    print("\n   📝 Output:")
-    print(result)
+    logger.info("\n   📝 Output:")
+    logger.info(result)
 
     if "Scheduled" in result:
-        print("\n   ✅ PASS: Event created successfully. Check your Google Calendar!")
+        logger.info("\n   ✅ PASS: Event created successfully. Check your Google Calendar!")
     else:
-        print("\n   ❌ FAIL: Could not create event.")
+        logger.error("\n   ❌ FAIL: Could not create event.")
 
 if __name__ == "__main__":
     test_calendar_write()

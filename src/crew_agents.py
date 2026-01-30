@@ -5,10 +5,13 @@ Docstring for src.crew_agents
 
 import yaml
 import os
+import logging
 from crewai import Agent
 from src.llm_config import llm
 from src.tools import TOOL_MAPPING
 from src.fast_agents import FastTrackAgent
+
+logger = logging.getLogger(__name__)
 
 class LifeOSAgents:
     def __init__(self):
@@ -37,7 +40,7 @@ class LifeOSAgents:
         agent_data = self.config.get(agent_key)
         
         if not agent_data:
-            print(f"⚠️ Agente '{agent_key}' no encontrado en YAML.")
+            logger.warning(f"⚠️ Agente '{agent_key}' no encontrado en YAML.")
             return None
 
         # --- LÓGICA DE INYECCIÓN DE HERRAMIENTAS ---
@@ -63,7 +66,7 @@ class LifeOSAgents:
                     else:
                         agent_tools.append(tool_instance)
                 else:
-                    print(f"   ⚠️  WARN: Herramienta '{tool_name}' no existe en el catálogo.")
+                    logger.warning(f"   ⚠️  WARN: Herramienta '{tool_name}' no existe en el catálogo.")
 
         execution_mode = agent_data.get('execution_mode', 'crew')
         
@@ -79,11 +82,11 @@ class LifeOSAgents:
         }
 
         if execution_mode == 'fast':
-            print(f"⚡ Creando FastTrackAgent para {agent_key.upper()} usando modelo: '{target_model_name}'")
+            logger.info(f"⚡ Creando FastTrackAgent para {agent_key.upper()} usando modelo: '{target_model_name}'")
             # Inyectamos el nombre del modelo específico para el Router (Gemma)
             return FastTrackAgent(**agent_params, model_name=target_model_name)
         else:
-            print(f"🐢 Creando CrewAI Agent para {agent_key.upper()}")
+            logger.info(f"🐢 Creando CrewAI Agent para {agent_key.upper()}")
             # Los agentes normales usan el 'llm' global configurado en src/llm_config.py
             agent_params['verbose'] = agent_data.get('verbose', True)
             agent_params['allow_delegation'] = agent_data.get('allow_delegation', False)
