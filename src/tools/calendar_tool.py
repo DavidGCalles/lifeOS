@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 from src.tools.google_base import GoogleServiceFactory
 from src.identity_manager import UserContext
 import pytz
+from src.logging_config import get_logger
+logger = get_logger(__name__) 
 
 class CalendarListInput(BaseModel):
     days_ahead: int = Field(7, description="How many days into the future to scan. Default is 7.")
@@ -28,6 +30,7 @@ class CalendarListTool(BaseTool):
     def _run(self, days_ahead: int = 7, max_results: int = 10) -> str:
         # 1. Validación (igual)
         if not self._current_user or not self._current_user.calendar_id:
+             logger.warning("CalendarListTool invoked without calendar configured for user: %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
              return "❌ Error: User email not configured. Ask the user for it."
 
         calendar_id = self._current_user.calendar_id
@@ -63,6 +66,7 @@ class CalendarListTool(BaseTool):
             events = events_result.get('items', [])
 
             if not events:
+                logger.info("CalendarListTool: no events for calendar %s in next %s days", calendar_id, days_ahead)
                 return f"📅 Agenda for {calendar_id}: No upcoming events found for the next {days_ahead} days."
 
             # 5. Formateo de Salida
@@ -90,6 +94,7 @@ class CalendarListTool(BaseTool):
             return "\n".join(output)
 
         except Exception as e:
+            logger.exception("CalendarListTool error for calendar %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
             error_msg = str(e)
             if "Not Found" in error_msg:
                 return (
@@ -123,6 +128,7 @@ class CalendarAddTool(BaseTool):
     def _run(self, summary: str, start_time: str, duration_minutes: int = 60, description: str = "") -> str:
         # 1. Validación de Identidad
         if not self._current_user or not self._current_user.calendar_id:
+            logger.warning("CalendarAddTool invoked without calendar configured for user: %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
             return "❌ Error: User email not configured. Use 'SetCalendarIDTool' first."
 
         calendar_id = self._current_user.calendar_id
@@ -154,14 +160,17 @@ class CalendarAddTool(BaseTool):
             }
 
             # 4. Llamada a la API
+            logger.info("CalendarAddTool: scheduling event for %s by user %s", summary, calendar_id)
             service = GoogleServiceFactory.build_service('calendar', 'v3')
             event = service.events().insert(calendarId=calendar_id, body=event_body).execute()
 
             # 5. Confirmación
             html_link = event.get('htmlLink', '#')
+            logger.info("CalendarAddTool: event scheduled id=%s summary=%s", event.get('id'), summary)
             return f"✅ Event Scheduled: '{summary}' on {start_time} ({duration_minutes} min).\nLink: {html_link}"
 
         except Exception as e:
+            logger.exception("CalendarAddTool failed for user %s", calendar_id)
             return f"❌ Error scheduling event: {str(e)}"
 
 # --- INPUT SCHEMA PARA BORRADO ---
@@ -186,11 +195,13 @@ class CalendarDeleteTool(BaseTool):
     def _run(self, query: str) -> str:
         # 1. Validación de Identidad
         if not self._current_user or not self._current_user.calendar_id:
+            logger.warning("CalendarDeleteTool invoked without calendar configured for user: %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
             return "❌ Error: User email not configured. Cannot access calendar."
 
         calendar_id = self._current_user.calendar_id
         
         try:
+            logger.info("CalendarDeleteTool: searching for '%s' in calendar %s", query, calendar_id)
             service = GoogleServiceFactory.build_service('calendar', 'v3')
             
             # 2. Definir rango de búsqueda (Próximos 30 días)
@@ -215,9 +226,11 @@ class CalendarDeleteTool(BaseTool):
 
             # 4. Lógica de Seguridad (Ambiguity Check)
             if not events:
+                logger.info("CalendarDeleteTool: no matches for '%s' in calendar %s", query, calendar_id)
                 return f"⚠️ No matching events found for '{query}' in the next 30 days."
 
             if len(events) > 1:
+                logger.warning("CalendarDeleteTool: ambiguity - %d matches for '%s' in calendar %s", len(events), query, calendar_id)
                 # Conflicto: Devolvemos lista para que el Agente pida clarificación
                 conflict_list = []
                 for e in events:
@@ -242,9 +255,11 @@ class CalendarDeleteTool(BaseTool):
                 eventId=event_id
             ).execute()
 
+            logger.info("CalendarDeleteTool: deleted event id=%s summary=%s", event_id, event_summary)
             return f"🗑️ DELETED: '{event_summary}' at {event_time}."
 
         except Exception as e:
+            logger.exception("CalendarDeleteTool failed for calendar %s with query=%s", calendar_id, query)
             return f"❌ Error deleting event: {str(e)}"
         
 # --- INPUT SCHEMA PARA UPDATE ---
@@ -271,11 +286,13 @@ class CalendarUpdateTool(BaseTool):
 
     def _run(self, query: str, new_summary: str = None, new_start_time: str = None, new_duration: int = None, new_description: str = None) -> str:
         if not self._current_user or not self._current_user.calendar_id:
+            logger.warning("CalendarUpdateTool invoked without calendar configured for user: %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
             return "❌ Error: User email not configured."
 
         calendar_id = self._current_user.calendar_id
         
         try:
+            logger.info("CalendarUpdateTool: searching updates for query=%s in calendar=%s", query, calendar_id)
             service = GoogleServiceFactory.build_service('calendar', 'v3')
             tz = pytz.timezone('Europe/Madrid')
             
@@ -297,9 +314,11 @@ class CalendarUpdateTool(BaseTool):
 
             # 2. GESTIÓN DE AMBIGÜEDAD
             if not events:
+                logger.info("CalendarUpdateTool: no events matching %s in calendar %s", query, calendar_id)
                 return f"⚠️ No events found matching '{query}' to update."
             
             if len(events) > 1:
+                logger.warning("CalendarUpdateTool: ambiguity - %d matches for %s in calendar %s", len(events), query, calendar_id)
                 conflict_list = [f"- {e.get('summary')} at {e['start'].get('dateTime')}" for e in events]
                 return (
                     f"🛑 AMBIGUITY: Found {len(events)} matches. Please be more specific.\n" + 
@@ -357,7 +376,9 @@ class CalendarUpdateTool(BaseTool):
 
             # Extraemos la hora actualizada para confirmar
             final_start = updated_event.get('start', {}).get('dateTime', 'Unknown')
+            logger.info("CalendarUpdateTool: updated event id=%s with changes=%s", event_id, changes)
             return f"✅ UPDATED: '{updated_event.get('summary')}' is now at {final_start}."
 
         except Exception as e:
+            logger.exception("CalendarUpdateTool failed for calendar %s with query=%s", calendar_id, query)
             return f"❌ Update Failed: {str(e)}"

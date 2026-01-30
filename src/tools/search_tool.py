@@ -1,6 +1,8 @@
 from crewai.tools import BaseTool
 from duckduckgo_search import DDGS
 from pydantic import BaseModel, Field
+from src.logging_config import get_logger
+logger = get_logger(__name__)
 
 class SearchInput(BaseModel):
     query: str = Field(..., description="The search query string.")
@@ -14,6 +16,7 @@ class WebSearchTool(BaseTool):
     args_schema: type[BaseModel] = SearchInput
 
     def _run(self, query: str) -> str:
+        logger.debug("WebSearchTool query=%s", query)
         try:
             with DDGS() as ddgs:
                 # Extraemos 4 resultados para no saturar el contexto
@@ -32,4 +35,5 @@ class WebSearchTool(BaseTool):
             
             return "\n\n".join(formatted_results)
         except Exception as e:
+            logger.exception("Error searching web for query=%s", query)
             return f"Error searching web: {str(e)}"
