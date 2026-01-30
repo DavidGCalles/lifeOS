@@ -11,6 +11,8 @@ from src.schemas.memory import (
 )
 from src.memory_manager import VectorMemoryManager
 from src.identity_manager import UserContext
+from src.logging_config import get_logger
+logger = get_logger(__name__) 
 
 # --- INPUT SCHEMAS ---
 
@@ -52,6 +54,7 @@ class RememberTool(BaseTool):
         author_name = self._current_user.name if self._current_user else "unknown_system"
         try:
             manager = VectorMemoryManager()
+            logger.info("RememberTool invoked by %s. Adding memory (len=%d)...", author_name, len(content))
             
             # Construimos el objeto estricto
             # Nota: Pydantic v2 valida los enums automáticamente
@@ -67,9 +70,11 @@ class RememberTool(BaseTool):
             )
             
             mem_id = await manager.add_memory(memory)
+            logger.info("Memory saved: id=%s by=%s", mem_id, author_name)
             return f"✅ Memory saved successfully with ID: {mem_id}"
             
         except Exception as e:
+            logger.exception("Error saving memory")
             return f"❌ Error saving memory: {str(e)}"
 
     async def run(self, *args, **kwargs):
@@ -86,6 +91,7 @@ class RecallTool(BaseTool):
     async def _run(self, query: str, domain: str | None = None) -> str:
         try:
             manager = VectorMemoryManager()
+            logger.debug("RecallTool query=%s domain=%s", query, domain)
             
             filters = {}
             if domain:
@@ -94,6 +100,7 @@ class RecallTool(BaseTool):
             results = await manager.search_memory(query=query, filters=filters if filters else None)
             
             if not results:
+                logger.info("RecallTool: no results for query=%s", query)
                 return "No relevant memories found."
             
             # List comprehension moderna y f-strings
@@ -101,9 +108,11 @@ class RecallTool(BaseTool):
                 [f"- [{item.created_at}] ({item.metadata.type}): {item.content}" for item in results]
             )
             
+            logger.info("RecallTool: found %d results for query=%s", len(results), query)
             return formatted_output
 
         except Exception as e:
+            logger.exception("Error retrieving memories for query=%s", query)
             return f"❌ Error retrieving memories: {str(e)}"
 
     async def run(self, *args, **kwargs):
@@ -121,12 +130,14 @@ class ForgetTool(BaseTool):
     async def _run(self, query: str) -> str:
         try:
             manager = VectorMemoryManager()
+            logger.info("ForgetTool invoked. Query=%s", query)
             
             # 1. Primero buscamos qué vamos a borrar (para confirmar)
             # Buscamos el top 1 más similar
             results = await manager.search_memory(query=query, limit=1)
             
             if not results:
+                logger.info("ForgetTool: no match for query=%s", query)
                 return f"❌ Could not find any memory resembling '{query}' to delete."
             
             target_memory = results[0]
@@ -134,6 +145,7 @@ class ForgetTool(BaseTool):
             # 2. Borramos usando el ID que hemos recuperado
             # Necesitas añadir este método .delete() al Manager (ver abajo)
             await manager.delete_memory(target_memory.id)
+            logger.info("ForgetTool: deleted memory id=%s", target_memory.id)
             
             return (
                 f"🗑️ DELETED Memory ID {target_memory.id}\n"
@@ -142,6 +154,7 @@ class ForgetTool(BaseTool):
             )
 
         except Exception as e:
+            logger.exception("Error deleting memory for query=%s", query)
             return f"❌ Error deleting memory: {str(e)}"
 
     async def run(self, *args, **kwargs):

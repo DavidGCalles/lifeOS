@@ -9,11 +9,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.fast_agents import FastTrackAgent
 from src.tools.calculator_tool import CalculatorTool
 
-# Configurar logging para ver lo que pasa
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(message)s')
+# Central logging config
+from src.logging_config import configure_logging
+configure_logging(level=logging.INFO)
+import logging
+logger = logging.getLogger(__name__)
 
 async def test_async_agent_with_tools():
-    print("\n>>> 🏎️  TEST: Async FastTrack Agent (Tool Execution)")
+    logger.info("\n>>> 🏎️  TEST: Async FastTrack Agent (Tool Execution)")
 
     # 1. Instanciamos el Agente con la Calculadora
     # Simulamos ser "Kitchen" para que tenga sentido hacer cálculos (ej. calorías/cantidades)
@@ -27,24 +30,22 @@ async def test_async_agent_with_tools():
 
     # 2. Query que requiere herramienta
     query = "Calculate 123 * 456 and tell me the result."
-    print(f"   👤 User Query: '{query}'")
+    logger.info(f"   👤 User Query: '{query}'")
 
     # 3. Ejecución Asíncrona
     try:
         response = await agent.execute(query)
-        print(f"\n   🤖 Agent Response:\n   {response}")
+        logger.info(f"\n   🤖 Agent Response:\n   {response}")
         
         # 4. Verificación
         expected_math = 123 * 456 # 56088
         if str(expected_math) in response:
-            print(f"\n✅ TEST PASSED: Agent used the tool and got {expected_math}.")
+            logger.info(f"\n✅ TEST PASSED: Agent used the tool and got {expected_math}.")
         else:
-            print(f"\n⚠️ TEST WARNING: The number {expected_math} was not strictly found in text (Check output).")
+            logger.warning(f"\n⚠️ TEST WARNING: The number {expected_math} was not strictly found in text (Check output).")
 
     except Exception as e:
-        print(f"\n❌ TEST FAILED: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"\n❌ TEST FAILED: {e}")
 
 if __name__ == "__main__":
     asyncio.run(test_async_agent_with_tools())

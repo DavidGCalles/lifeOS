@@ -1,6 +1,8 @@
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from src.identity_manager import IdentityManager, UserContext, UserRole
+from src.logging_config import get_logger
+logger = get_logger(__name__) 
 
 class GovernanceInput(BaseModel):
     telegram_id: str = Field(..., description="The Telegram ID of the user to manage.")
@@ -25,11 +27,13 @@ class UserGovernanceTool(BaseTool):
     async def _run(self, telegram_id: str, new_role: str, new_name: str|None = None, description:str|None = None) -> str:
         # 1. Security Check: Only ADMIN can wield The Scepter
         if not self._current_user or not self._current_user.is_admin:
+            logger.warning("SECURITY VIOLATION: unauthorized tool use attempted by %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
             return "⛔ SECURITY VIOLATION: You are not authorized to use this tool. Incident reported."
         
+        logger.info("UserGovernanceTool invoked by admin %s to update %s -> %s", self._current_user.telegram_id, telegram_id, new_role)
         # 2. Construcción del payload de actualización
         # Aplicamos el fix de .lower() para el Enum de UserRole
-        update_data = {"role": new_role.lower()}
+        update_data = {"role": new_role.lower()} 
         
         if new_name:
             update_data["name"] = new_name
@@ -46,8 +50,10 @@ class UserGovernanceTool(BaseTool):
             if description: details.append(f"desc: *{description}*")
             
             detail_msg = f" ({', '.join(details)})" if details else ""
+            logger.info("User %s role updated to %s by admin %s", telegram_id, new_role.upper(), self._current_user.telegram_id)
             return f"✅ Decree Executed: User `{telegram_id}` is now **{new_role.upper()}**{detail_msg}."
         else:
+            logger.error("Failed to update user %s with %s by admin %s", telegram_id, update_data, self._current_user.telegram_id)
             return "❌ System Error: Could not update Firestore."
 
     async def run(self, *args, **kwargs):

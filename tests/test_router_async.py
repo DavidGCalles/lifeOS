@@ -10,11 +10,14 @@ from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
 from src.identity_manager import UserContext, UserRole
 
-# Configurar logging para ver errores si ocurren
-logging.basicConfig(level=logging.INFO)
+# Centralized logging
+from src.logging_config import configure_logging
+configure_logging(level=logging.INFO)
+import logging
+logger = logging.getLogger(__name__)
 
 async def test_async_json_routing():
-    print("\n>>> 🚦 TEST: Async Router (JSON Mode Validation)")
+    logger.info("\n>>> 🚦 TEST: Async Router (JSON Mode Validation)")
     
     # Setup mínimo
     session_manager = SessionManager()
@@ -33,7 +36,7 @@ async def test_async_json_routing():
     ]
 
     for message, expected in test_cases:
-        print(f"\n📨 Input: '{message}'")
+        logger.info(f"\n📨 Input: '{message}'")
         
         # Medir tiempo aprox (aunque es integración, no benchmark riguroso)
         start_time = asyncio.get_event_loop().time()
@@ -43,12 +46,12 @@ async def test_async_json_routing():
         elapsed = asyncio.get_event_loop().time() - start_time
         
         # Verificación
-        print(f"   👉 Result: {result} (Time: {elapsed:.2f}s)")
+        logger.info(f"   👉 Result: {result} (Time: {elapsed:.2f}s)")
         
         if result == expected:
-            print("   ✅ PASS")
+            logger.info("   ✅ PASS")
         else:
-            print(f"   ❌ FAIL (Expected {expected})")
+            logger.error(f"   ❌ FAIL (Expected {expected})")
 
 if __name__ == "__main__":
     asyncio.run(test_async_json_routing())

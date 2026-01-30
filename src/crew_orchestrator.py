@@ -96,7 +96,7 @@ class CrewOrchestrator:
 
         else:
             # SLOW TRACK: CrewAI (Legacy)
-            print("🐢 Crew-tracking dispatcher")
+            logger.info("🐢 Crew-tracking dispatcher")
             routing_task = self.tasks.router_task(dispatcher, full_context_message, options_text)
             routing_crew = Crew(
                 agents=[dispatcher],
@@ -106,17 +106,17 @@ class CrewOrchestrator:
             decision = await asyncio.to_thread(routing_crew.kickoff)
             return str(decision).strip().upper()
 
-    async def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None):
+    async def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None, extra_context: str | None = None):
         """
         Ejecuta al agente seleccionado. Si es Fast, await directo. Si es Crew, thread.
         """
         yaml_key = target_agent_key.lower()
-        print(f"🚀 Orquestador: Activando agente '{yaml_key}' para usuario '{user.name if user else 'Unknown'}'...")
+        logger.info(f"🚀 Orquestador: Activando agente '{yaml_key}' para usuario '{user.name if user else 'Unknown'}'...")
 
         try:
             agent = self.agents.create_agent(yaml_key)
         except ValueError:
-            print(f"⚠️ Agente '{yaml_key}' no encontrado. Fallback a JANE.")
+            logger.warning(f"⚠️ Agente '{yaml_key}' no encontrado. Fallback a JANE.")
             agent = self.agents.create_agent('jane')
         
         if not agent:
@@ -124,14 +124,18 @@ class CrewOrchestrator:
 
         # --- CONSTRUCCIÓN DEL CONTEXTO ---
         context_parts = []
+        
+        # [NEW] Inject Reply Context FIRST to prioritize it
+        if extra_context:
+             context_parts.append(f"🔥 ATTENTION: {extra_context}\n")
+        
         if user:
             context_parts.append(self._format_identity_context(user))
 
         if chat_id:
-            # UPDATE: Añadido await porque get_context ahora es async (Issue #005)
             context_history = await self.session_manager.get_context(chat_id)
             if context_history:
-                print(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
+                logger.info(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
                 context_parts.append(f"📜 CHAT HISTORY:\n{context_history}\n")
 
         full_context = "\n".join(context_parts)
@@ -139,11 +143,11 @@ class CrewOrchestrator:
         # --- EJECUCIÓN ---
         if getattr(agent, "is_fast_agent", False):
             # FAST TRACK
-            print(f"⚡ Fast-tracking {agent.role}")
+            logger.info(f"⚡ Fast-tracking {agent.role}")
             return await agent.execute(user_message=user_message, context=full_context)
         else:
             # SLOW TRACK
-            print(f"🐢 Crew-tracking {agent.role}")
+            logger.info(f"🐢 Crew-tracking {agent.role}")
             full_message_for_crew = f"{full_context}\n👇 CURRENT REQUEST:\n{user_message}"
             
             task1 = self.tasks.analysis_task(agent, full_message_for_crew)

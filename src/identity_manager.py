@@ -10,8 +10,8 @@ from google.cloud import firestore # Necesario para SERVER_TIMESTAMP
 
 load_dotenv()
 
-logging.basicConfig(level=os.getenv('LOGGING_LEVEL', 'INFO').upper(),
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+from src.logging_config import configure_logging
+configure_logging(level=os.getenv('LOGGING_LEVEL', 'INFO'))
 logger = logging.getLogger(__name__)
 
 class UserRole(StrEnum):

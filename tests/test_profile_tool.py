@@ -12,10 +12,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.tools.profile_tool import SetCalendarIDTool
 from src.identity_manager import IdentityManager, UserContext, UserRole
 
-logging.basicConfig(level=logging.INFO)
+from src.logging_config import configure_logging
+configure_logging(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def test_set_email():
-    print("\n>>> 📧 TEST: SetCalendarIDTool")
+    logger.info("\n>>> 📧 TEST: SetCalendarIDTool")
 
     # 1. Crear contexto Mock
     test_id = f"test_user_{uuid4().hex[:8]}"
@@ -24,7 +26,7 @@ async def test_set_email():
         name="Tool Tester",
         role=UserRole.USER
     )
-    print(f"   👤 User: {test_id}")
+    logger.info(f"   👤 User: {test_id}")
 
     # 2. Inicializar Tool e Inyectar Contexto
     tool = SetCalendarIDTool()
@@ -32,25 +34,25 @@ async def test_set_email():
 
     # 3. Ejecutar Tool (Simular Agente)
     target_email = "tester@example.com"
-    print(f"   👉 Setting email to: {target_email}")
+    logger.info(f"   👉 Setting email to: {target_email}")
     
     result = await tool.run(email=target_email)
-    print(f"   🤖 Tool Output: {result}")
+    logger.info(f"   🤖 Tool Output: {result}")
 
     if "Success" not in result:
-        print("   ❌ FAIL: Tool execution returned error.")
+        logger.error("   ❌ FAIL: Tool execution returned error.")
         return
 
     # 4. Verificación en DB
-    print("   🔍 Verifying in Firestore...")
+    logger.info("   🔍 Verifying in Firestore...")
     updated_user = await IdentityManager.get_user(test_id)
     
     if updated_user.calendar_id == target_email:
-        print(f"   ✅ PASS: Firestore reflects 'calendar_id': {updated_user.calendar_id}")
+        logger.info(f"   ✅ PASS: Firestore reflects 'calendar_id': {updated_user.calendar_id}")
     else:
-        print(f"   ❌ FAIL: Expected {target_email}, got {updated_user.calendar_id}")
+        logger.error(f"   ❌ FAIL: Expected {target_email}, got {updated_user.calendar_id}")
 
 if __name__ == "__main__":
     if not os.getenv("USE_FIRESTORE"):
-         print("⚠️  WARNING: USE_FIRESTORE not set. Test might fail.")
+         logger.warning("⚠️  WARNING: USE_FIRESTORE not set. Test might fail.")
     asyncio.run(test_set_email())

@@ -1,6 +1,8 @@
 from datetime import datetime
 import pytz 
 from crewai.tools import BaseTool
+from src.logging_config import get_logger
+logger = get_logger(__name__)
 
 class TimeCheckTool(BaseTool):
     name: str = "TimeCheckTool"
@@ -22,4 +24,6 @@ class TimeCheckTool(BaseTool):
         day_en = now.strftime("%A")
         day_es = days_map.get(day_en, day_en)
         
-        return now.strftime(f"{day_es}, %Y-%m-%d %H:%M:%S %Z")
+        result = now.strftime(f"{day_es}, %Y-%m-%d %H:%M:%S %Z")
+        logger.debug("TimeCheckTool -> %s", result)
+        return result

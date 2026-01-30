@@ -15,8 +15,9 @@ from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
 
-# Configuración de Logs
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Centralized logging configuration
+from src.logging_config import configure_logging
+configure_logging()
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Configuración
@@ -92,24 +93,55 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     user_text = update.message.text
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
+    target_agent = None
+    bypass_context = None
+
     try:
-        # FASE 1: ENRUTAMIENTO
-        target_agent = await orchestrator.route_request(user_text, current_user)
+        # FASE 0: DETERMINISTIC ROUTING (Reply-To Check)
+        # Si el usuario responde a un mensaje, verificamos si ese mensaje tiene firma de agente.
+        if update.message.reply_to_message:
+            parent_msg_id = update.message.reply_to_message.message_id
+            
+            # Buscamos en DB quién envió ese mensaje
+            parent_meta = await SessionManager.get_message_metadata(chat_id, parent_msg_id)
+            
+            if parent_meta and parent_meta.get('agent_key'):
+                found_agent = parent_meta['agent_key']
+                parent_content = parent_meta.get('content', '...')
+                
+                logging.info(f"⚡ ROUTER BYPASS: Reply detected. Binding to agent '{found_agent}'.")
+                
+                target_agent = found_agent
+                bypass_context = f"The user is REPLYING directly to your previous message: '{parent_content}'."
+
+        # FASE 1: ENRUTAMIENTO (Solo si no hubo bypass)
+        if not target_agent:
+            target_agent = await orchestrator.route_request(user_text, current_user)
         
         # LOGGING USER
         await SessionManager.add_message(
             chat_id,
-            {"role": current_user.role.value, "content": user_text, "user_id": user_id, "name": current_user.name, "message_id": update.message.message_id}
+            {
+                "role": current_user.role.value, 
+                "content": user_text, 
+                "user_id": user_id, 
+                "name": current_user.name, 
+                "message_id": update.message.message_id
+            }
         )
 
-        # FASE 2: EJECUCIÓN
-        respuesta = await orchestrator.execute_request(user_text, target_agent, chat_id, current_user)
+        # FASE 2: EJECUCIÓN (Inject bypass_context if exists)
+        respuesta = await orchestrator.execute_request(
+            user_text, 
+            target_agent, 
+            chat_id, 
+            current_user,
+            extra_context=bypass_context # <--- Inyectamos el contexto del reply
+        )
         respuesta_str = str(respuesta)
         
         # --- 🚀 NOTIFICACIÓN PROACTIVA A NUEVOS USUARIOS ---
-        # Si detectamos que se ha ejecutado un cambio de gobernanza exitoso
         if "Decree Executed" in respuesta_str:
-            # Extraemos el ID del usuario autorizado usando regex del mensaje original del admin o la respuesta
             match = re.search(r'`(\d+)`', respuesta_str)
             if match:
                 target_id = match.group(1)
@@ -143,11 +175,18 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # LOGGING BOT
         await SessionManager.add_message(
             chat_id,
-            {"role": "assistant", "content": respuesta_str, "user_id": context.bot.id, "name": "LifeOS", "message_id": sent_message.message_id}
+            {
+                "role": "assistant", 
+                "content": respuesta_str, 
+                "user_id": context.bot.id, 
+                "name": "LifeOS", 
+                "message_id": sent_message.message_id,
+                "agent_key": target_agent 
+            }
         )
 
     except Exception as e:
-        logging.error("Error en el proceso: %s", e)
+        logging.error("Error en el proceso: %s", e, exc_info=True)
         await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Error crítico:\n`{str(e)}`", parse_mode='Markdown')
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

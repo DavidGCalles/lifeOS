@@ -17,16 +17,18 @@ async def radar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
+    import logging
+    logger = logging.getLogger(__name__)
     # ---------------------------------------------------------
     # EL RADAR VISUAL (Mira tu consola)
     # ---------------------------------------------------------
-    print("\n" + "█"*50)
-    print(f"🎯 OBJETIVO DETECTADO")
-    print(f"👤 Nombre:   {user.first_name} {user.last_name or ''}")
-    print(f"🏷️ Username: @{user.username}")
-    print(f"🆔 USER ID:  {user.id}  <--- COPIA ESTE NÚMERO")
-    print(f"💬 Chat ID:  {chat.id} ({chat.type})")
-    print("█"*50 + "\n")
+    logger.info("\n" + "█"*50)
+    logger.info(f"🎯 OBJETIVO DETECTADO")
+    logger.info(f"👤 Nombre:   {user.first_name} {user.last_name or ''}")
+    logger.info(f"🏷️ Username: @{user.username}")
+    logger.info(f"🆔 USER ID:  {user.id}  <--- COPIA ESTE NÚMERO")
+    logger.info(f"💬 Chat ID:  {chat.id} ({chat.type})")
+    logger.info("█"*50 + "\n")
 
     # Feedback para el usuario (opcional, para que sepan que el bot "oye")
     await update.message.reply_text(
@@ -35,13 +37,16 @@ async def radar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 def run_radar():
+    import logging
+    logger = logging.getLogger(__name__)
+
     if not TOKEN:
-        print("❌ ERROR: No encuentro TELEGRAM_BOT_TOKEN en el .env")
+        logger.error("❌ ERROR: No encuentro TELEGRAM_BOT_TOKEN en el .env")
         sys.exit(1)
 
-    print(f"🛰️  RADAR INICIADO con token: {TOKEN[:5]}...*****")
-    print("👉 Manda un mensaje al bot desde Telegram ahora.")
-    print("👉 Pulsa Ctrl+C para salir.\n")
+    logger.info(f"🛰️  RADAR INICIADO con token: {TOKEN[:5]}...*****")
+    logger.info("👉 Manda un mensaje al bot desde Telegram ahora.")
+    logger.info("👉 Pulsa Ctrl+C para salir.\n")
 
     # Construimos la app mínima
     app = Application.builder().token(TOKEN).build()
@@ -59,4 +64,6 @@ if __name__ == "__main__":
         TOKEN = os.getenv("TELEGRAM_TOKEN", "")
         run_radar()
     except KeyboardInterrupt:
-        print("\n👋 Radar apagado.")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("\n👋 Radar apagado.")

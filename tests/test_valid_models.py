@@ -1,7 +1,10 @@
 import google.generativeai as genai
 import os
 import time
+import logging
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # 1. Carga las variables de entorno (busca archivo .env o variables del sistema)
 load_dotenv()
@@ -11,9 +14,9 @@ api_key = os.getenv("GEMINI_API_KEY")
 
 # VERIFICACIÓN DE SEGURIDAD
 if not api_key:
-    print("❌ ERROR CRÍTICO: No se encontró la variable 'GOOGLE_API_KEY'.")
-    print("Asegúrate de tener un archivo .env con: GOOGLE_API_KEY=tu_clave_aqui")
-    print("O exporta la variable en tu terminal.")
+    logger.error("❌ ERROR CRÍTICO: No se encontró la variable 'GEMINI_API_KEY'.")
+    logger.error("Asegúrate de tener un archivo .env con: GEMINI_API_KEY=tu_clave_aqui")
+    logger.error("O exporta la variable en tu terminal.")
     exit(1)
 
 # Configuramos la librería
@@ -51,8 +54,8 @@ candidates_list = [
 valid_models = []
 failed_models = []
 
-print(f"🚀 Iniciando validación de {len(candidates_list)} modelos contra tu API Key...")
-print("-" * 50)
+logger.info(f"🚀 Iniciando validación de {len(candidates_list)} modelos contra tu API Key...")
+logger.info("-" * 50)
 
 for model_name in candidates_list:
     try:
@@ -66,7 +69,7 @@ for model_name in candidates_list:
             generation_config={"max_output_tokens": 1}
         )
         
-        print(f"✅ [VIVO] {model_name}")
+        logger.info(f"✅ [VIVO] {model_name}")
         valid_models.append(model_name)
         
     except Exception as e:
@@ -74,27 +77,27 @@ for model_name in candidates_list:
         
         # Filtramos un poco el error para que sea legible
         if "404" in error_msg or "Not Found" in error_msg:
-            print(f"❌ [404]  {model_name} (No disponible para tu Key)")
+            logger.warning(f"❌ [404]  {model_name} (No disponible para tu Key)")
         elif "429" in error_msg:
-            print(f"⚠️ [429]  {model_name} (Rate Limit - El modelo existe pero estás limitado)")
+            logger.warning(f"⚠️ [429]  {model_name} (Rate Limit - El modelo existe pero estás limitado)")
             # Si es rate limit, técnicamente es válido, pero falló la llamada.
             # Lo añado a válidos con asterisco mental o lo reintento.
             # Para este script, lo marcamos como fallo temporal.
         else:
-            print(f"💀 [ERR]  {model_name} -> {error_msg.split(' ')[0]}...") # Error corto
+            logger.error(f"💀 [ERR]  {model_name} -> {error_msg.split(' ')[0]}...") # Error corto
             
         failed_models.append(model_name)
 
     # PEQUEÑA PAUSA para no provocar nosotros mismos un Rate Limit por ir a metralleta
     time.sleep(0.5) 
 
-print("-" * 50)
-print(f"\n📊 RESUMEN FINAL:")
-print(f"Modelos Funcionales: {len(valid_models)}")
-print(f"Modelos Fallidos:    {len(failed_models)}")
+logger.info("-" * 50)
+logger.info("\n📊 RESUMEN FINAL:")
+logger.info(f"Modelos Funcionales: {len(valid_models)}")
+logger.info(f"Modelos Fallidos:    {len(failed_models)}")
 
 if valid_models:
-    print("\n📋 Copia esta lista para tu app (Python List):")
-    print(valid_models)
+    logger.info("\n📋 Copia esta lista para tu app (Python List):")
+    logger.info(valid_models)
 else:
-    print("\n⚠️ Ningún modelo respondió. Revisa tu API Key o tu conexión.")
+    logger.warning("\n⚠️ Ningún modelo respondió. Revisa tu API Key o tu conexión.")
