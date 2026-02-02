@@ -6,6 +6,7 @@ crewai-tools
 openai
 duckduckgo-search
 pytz
+pillow
 qdrant-client
 google-cloud-firestore
 
