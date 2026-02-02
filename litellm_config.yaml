@@ -56,13 +56,18 @@ model_list:
       rpm: 30
       tpm: 15000
   
-  # Fallback de emergencia compartido (cuidado con el RPM compartido)
-  - model_name: router-model
+  #=========================================================
+  # POOL 3: VISION
+  #=========================================================
+  - model_name: vision-model
+    litellm_params:
+      model: gemini/gemini-2.5-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
+  
+  - model_name: vision-model
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
-      rpm: 5
-      tpm: 250000
 
   # ==========================================================
   # EMBEDDINGS

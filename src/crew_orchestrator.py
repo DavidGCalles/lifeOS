@@ -40,19 +40,27 @@ class CrewOrchestrator:
 
     async def route_request(self, user_message: str | list[dict[str, Any]], user: UserContext | None = None) -> str:
         """
-        Enruta la petición. Soporta multimodalidad solo en Fast Track.
+        Enruta la petición haciendo Hot-Swap de modelo si es necesario.
         """
         dispatcher = self.agents.create_agent('dispatcher')
+        
+        # Si el mensaje es una lista (formato multimodal), es que lleva imagen.
+        # Cambiamos el cerebro del dispatcher al modelo visual definido en config.
+        if isinstance(user_message, list):
+            logger.info("👁️ Visual Input detected: Dispatcher transforming to 'vision-model'")
+            dispatcher.model_name = "vision-model"
+        # ---------------------------
+
         options_text = self.agents.get_agents_summary()
         identity_header = self._format_identity_context(user)
         
-        # El contexto va separado para no contaminar el payload de imagen
+        # El contexto va separado para no ensuciar el payload visual
         routing_context = f"{identity_header}\nAvailable Agents:\n{options_text}"
 
         if getattr(dispatcher, "is_fast_agent", False):
+            # ... (resto del código igual que en el paso anterior) ...
             logger.info("⚡ Routing (Fast Track)...")
             try:
-                # user_message puede ser str o list[dict]
                 raw_response = await dispatcher.execute(
                     user_message=user_message, 
                     context=routing_context
