@@ -1,53 +1,52 @@
 '''
-LifeOS v2 - Async Fast Track Edition (FastAPI Wrapper + Polling Support)
+LifeOS v2 - Async Fast Track + Sensory Cortex Integration
 '''
 import logging
 import os
-import sys
 import re
 from contextlib import asynccontextmanager
+from typing import Any
 from fastapi import FastAPI, Request, Response
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+
 from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
-
-# Centralized logging configuration
 from src.logging_config import configure_logging
+
+# --- SENSORY IMPORTS ---
+from src.sensory import SensoryCortex
+from src.sensory.drivers.visual_driver import VisualDriver
+
 configure_logging()
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# Configuración
 TELEGRAM_TOKEN = load_credentials()
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-RUN_MODE = os.getenv('RUN_MODE', 'polling').lower() 
-PORT = int(os.getenv('PORT', '8080')) 
-ADMIN_USER_ID = os.getenv('ADMIN_USER_ID') 
+RUN_MODE = os.getenv('RUN_MODE', 'polling').lower()
+PORT = int(os.getenv('PORT', '8080'))
+ADMIN_USER_ID = os.getenv('ADMIN_USER_ID')
 
 session_manager = SessionManager()
 orchestrator = CrewOrchestrator(session_manager=session_manager)
 
-# --- Lógica del Bot (Handlers) ---
+# --- Lógica del Bot ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"🔥 LifeOS v2 Online.\nModo: {RUN_MODE.upper()}"
-    )
+    if update.effective_chat:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🔥 LifeOS v2 Online.\nModo: {RUN_MODE.upper()}")
 
 async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_chat or not update.effective_user: return
+    
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
 
-    if not update.message or not update.message.text:
-        return
-
     # 1. Identidad
     current_user = await IdentityManager.get_user(user_id)
-    
     # --- 🚧 PROTOCOLO DE INTERCEPCIÓN (PENDING/BLOCKED) 🚧 ---
     if current_user.role == UserRole.BLOCKED:
         logging.info(f"🚫 Usuario bloqueado {user_id} intentó contactar.")
@@ -89,90 +88,86 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
     inject_runtime_context(current_user)
-
-    user_text = update.message.text
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    target_agent = None
-    bypass_context = None
+    # 2. SENSORY CORTEX PROCESSING
+    # El Córtex decide si hay imagen, texto o nada.
+    sensory_payload = await SensoryCortex().process(update)
+    
+    user_input: str | list[dict[str, Any]] | None = None
+    is_multimodal = False
 
+    if sensory_payload:
+        # Es una imagen/audio -> Lista de dicts
+        user_input = sensory_payload["content"]
+        is_multimodal = True
+    elif update.message and update.message.text:
+        # Es texto plano -> String
+        user_input = update.message.text
+    else:
+        # Nada procesable (Sticker, edit, etc que no manejamos)
+        return
+
+    # 3. ENRUTAMIENTO Y EJECUCIÓN
     try:
-        # FASE 0: DETERMINISTIC ROUTING (Reply-To Check)
-        # Si el usuario responde a un mensaje, verificamos si ese mensaje tiene firma de agente.
-        if update.message.reply_to_message:
-            parent_msg_id = update.message.reply_to_message.message_id
-            
-            # Buscamos en DB quién envió ese mensaje
-            parent_meta = await SessionManager.get_message_metadata(chat_id, parent_msg_id)
-            
+        target_agent = None
+        bypass_context = None
+
+        # Reply-To Check
+        if update.message and update.message.reply_to_message:
+            parent_id = update.message.reply_to_message.message_id
+            parent_meta = await SessionManager.get_message_metadata(chat_id, parent_id)
             if parent_meta and parent_meta.get('agent_key'):
-                found_agent = parent_meta['agent_key']
-                parent_content = parent_meta.get('content', '...')
-                
-                logging.info(f"⚡ ROUTER BYPASS: Reply detected. Binding to agent '{found_agent}'.")
-                
-                target_agent = found_agent
-                bypass_context = f"The user is REPLYING directly to your previous message: '{parent_content}'."
+                target_agent = parent_meta['agent_key']
+                bypass_context = f"User replying to: '{parent_meta.get('content', '...')}'."
 
-        # FASE 1: ENRUTAMIENTO (Solo si no hubo bypass)
         if not target_agent:
-            target_agent = await orchestrator.route_request(user_text, current_user)
+            # El router recibe el input (sea texto o lista)
+            target_agent = await orchestrator.route_request(user_input, current_user)
         
-        # LOGGING USER
-        await SessionManager.add_message(
-            chat_id,
-            {
-                "role": current_user.role.value, 
-                "content": user_text, 
-                "user_id": user_id, 
-                "name": current_user.name, 
-                "message_id": update.message.message_id
-            }
-        )
+        # LOGGING (SANITIZED)
+        # No guardamos el base64 en Firestore.
+        log_content = user_input
+        if is_multimodal and isinstance(user_input, list):
+            # Buscamos el caption si existe
+            text_part = next((str(x["text"]) for x in user_input if x.get("type") == "text"), "")
+            log_content = f"[MULTIMODAL FILE] {text_part}"
 
-        # FASE 2: EJECUCIÓN (Inject bypass_context if exists)
+        if update.message:
+            await SessionManager.add_message(
+                chat_id,
+                {
+                    "role": current_user.role.value, 
+                    "content": log_content, 
+                    "user_id": user_id, 
+                    "name": current_user.name, 
+                    "message_id": update.message.message_id
+                }
+            )
+
+        # EJECUCIÓN
         respuesta = await orchestrator.execute_request(
-            user_text, 
-            target_agent, 
-            chat_id, 
-            current_user,
-            extra_context=bypass_context # <--- Inyectamos el contexto del reply
+            user_message=user_input, 
+            target_agent_key=str(target_agent), 
+            chat_id=chat_id, 
+            user=current_user,
+            extra_context=bypass_context
         )
         respuesta_str = str(respuesta)
         
-        # --- 🚀 NOTIFICACIÓN PROACTIVA A NUEVOS USUARIOS ---
-        if "Decree Executed" in respuesta_str:
-            match = re.search(r'`(\d+)`', respuesta_str)
-            if match:
-                target_id = match.group(1)
-                try:
-                    await context.bot.send_message(
-                        chat_id=target_id,
-                        text="✅ **Acceso Concedido**\n\nEl Administrador ha verificado tu identidad. Ya puedes interactuar con LifeOS.",
-                        parse_mode='Markdown'
-                    )
-                    logging.info(f"📧 Notificación enviada al nuevo usuario: {target_id}")
-                except Exception as e:
-                    logging.error(f"⚠️ No se pudo notificar al usuario {target_id}: {e}")
-
-        # FASE 3: RESPUESTA AL ADMIN/SOLICITANTE
-        final_text = f"🤖 *[{target_agent}]*\n\n{respuesta_str}"
-
+        # Enviar respuesta
         try:
-            sent_message = await context.bot.send_message(
+            sent_msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text=final_text,
+                text=f"🤖 *[{target_agent}]*\n\n{respuesta_str}",
                 parse_mode='Markdown'
             )
-        except Exception as e:
-            logging.warning(f"⚠️ Markdown Error: {e}. Fallback a texto plano.")
-            sent_message = await context.bot.send_message(
+        except Exception:
+            sent_msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"🤖 [{target_agent}]\n\n{respuesta_str}",
-                parse_mode=None
+                text=f"🤖 [{target_agent}]\n\n{respuesta_str}"
             )
 
-        # LOGGING BOT
         await SessionManager.add_message(
             chat_id,
             {
@@ -180,47 +175,49 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 "content": respuesta_str, 
                 "user_id": context.bot.id, 
                 "name": "LifeOS", 
-                "message_id": sent_message.message_id,
+                "message_id": sent_msg.message_id,
                 "agent_key": target_agent 
             }
         )
 
     except Exception as e:
-        logging.error("Error en el proceso: %s", e, exc_info=True)
-        await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Error crítico:\n`{str(e)}`", parse_mode='Markdown')
+        logging.error("Error en proceso: %s", e, exc_info=True)
+        await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Error: `{str(e)}`")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logging.warning(f'Update {update} causó el error {context.error}')
+    logging.warning(f'Update {update} causó error {context.error}')
 
-# --- FastAPI Setup & Lifecycle ---
+# --- Lifecycle ---
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logging.info(f"🚀 Iniciando LifeOS ({RUN_MODE})...")
     
+    # INICIALIZACIÓN SENSORIAL
+    cortex = SensoryCortex()
+    cortex.register_driver('photo', VisualDriver())
+    
     bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot_app.add_handler(CommandHandler('start', start))
-    bot_app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), chat_logic))
+    # Aceptamos TEXTO y FOTOS
+    bot_app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, chat_logic))
     bot_app.add_error_handler(error_handler)
     
     app.state.bot_app = bot_app
-    
     await bot_app.initialize()
     await bot_app.start()
     
     if RUN_MODE == 'webhook' and WEBHOOK_URL:
-        webhook_path = f"{WEBHOOK_URL}/telegram"
-        await bot_app.bot.set_webhook(url=webhook_path)
+        await bot_app.bot.set_webhook(url=f"{WEBHOOK_URL}/telegram")
     else:
         await bot_app.bot.delete_webhook()
         await bot_app.updater.start_polling()
     
-    yield 
+    yield
     
     logging.info("🛑 Deteniendo LifeOS...")
     if RUN_MODE != 'webhook':
         await bot_app.updater.stop()
-        
     await bot_app.stop()
     await bot_app.shutdown()
 
@@ -232,9 +229,7 @@ async def health_check():
 
 @app.post("/telegram")
 async def telegram_webhook(request: Request):
-    if RUN_MODE != 'webhook':
-        return Response(status_code=404)
-        
+    if RUN_MODE != 'webhook': return Response(status_code=404)
     bot_app = request.app.state.bot_app
     try:
         data = await request.json()

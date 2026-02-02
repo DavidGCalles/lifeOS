@@ -2,13 +2,13 @@ import asyncio
 import json
 import re
 import logging
+from typing import Any
 from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
 from src.utils.session_manager import SessionManager
 from src.identity_manager import UserContext 
 
-# Configurar logger local
 logger = logging.getLogger(__name__)
 
 class CrewOrchestrator:
@@ -18,145 +18,113 @@ class CrewOrchestrator:
         self.session_manager = session_manager
 
     def _format_identity_context(self, user: UserContext | None) -> str:
-        """Helper para formatear la cabecera de identidad."""
-        if not user:
-            return ""
-        
+        if not user: return ""
         return (
-            f"👤 INTERACTION CONTEXT:\n"
-            f"User Name: {user.name}\n"
-            f"User Role: {user.role}\n"
-            f"User Description: {user.description or 'N/A'}\n"
-            f"--------------------------------------------------\n"
+            f"👤 USER IDENTITY:\n"
+            f"Name: {user.name}\n"
+            f"Role: {user.role}\n"
+            f"Desc: {user.description or 'N/A'}\n"
         )
 
-    def _clean_and_extract_json(self, text: str) -> dict | None:
-        """
-        Intenta extraer un objeto JSON válido de una cadena de texto sucia
-        usando expresiones regulares. Compatible con fallbacks 'charlatanes'.
-        """
+    def _clean_and_extract_json(self, text: str) -> dict[str, Any] | None:
         try:
-            # 1. Intentar parseo directo
             return json.loads(text)
         except json.JSONDecodeError:
             pass
-
-        # 2. Buscar patrón { ... } (incluyendo saltos de línea)
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
-            json_str = match.group(0)
             try:
-                return json.loads(json_str)
-            except json.JSONDecodeError:
-                return None
+                return json.loads(match.group(0))
+            except: pass
         return None
 
-    async def route_request(self, user_message: str, user: UserContext | None = None) -> str:
+    async def route_request(self, user_message: str | list[dict[str, Any]], user: UserContext | None = None) -> str:
         """
-        Ejecuta el Router de forma ASÍNCRONA (Con Regex Extraction).
+        Enruta la petición. Soporta multimodalidad solo en Fast Track.
         """
         dispatcher = self.agents.create_agent('dispatcher')
         options_text = self.agents.get_agents_summary()
         identity_header = self._format_identity_context(user)
-        full_context_message = f"{identity_header}\nIncoming Message: {user_message}"
+        
+        # El contexto va separado para no contaminar el payload de imagen
+        routing_context = f"{identity_header}\nAvailable Agents:\n{options_text}"
 
-        # --- BRANCHING LOGIC ---
         if getattr(dispatcher, "is_fast_agent", False):
-            # FAST TRACK: Await directo + Regex Extraction
-            
-            logger.info("⚡ Fast-tracking dispatcher (Regex Mode)")
-            context = f"Available options: {options_text}"
-            
+            logger.info("⚡ Routing (Fast Track)...")
             try:
-                # 1. Ejecución Texto Normal
+                # user_message puede ser str o list[dict]
                 raw_response = await dispatcher.execute(
-                    user_message=full_context_message, 
-                    context=context
+                    user_message=user_message, 
+                    context=routing_context
                 )
                 
-                # 2. Extracción Quirúrgica
                 decision_data = self._clean_and_extract_json(raw_response)
-                
                 if decision_data and "target_agent" in decision_data:
-                    target_agent = decision_data["target_agent"].strip().upper()
-                    logger.info(f"🎯 Router Decision (JSON): {target_agent}")
-                    return target_agent
+                    return str(decision_data["target_agent"]).strip().upper()
                 
-                # 3. Fallback sucio
-                # raw_upper = raw_response.upper()
-                # if "PADRINO" in raw_upper: return "PADRINO"
-                # if "KITCHEN" in raw_upper: return "KITCHEN"
-                
-                logger.warning(f"⚠️ JSON Extraction failed. Raw: '{raw_response[:50]}...'. Defaulting to JANE.")
+                # Fallback texto sucio
+                #raw_upper = raw_response.upper()
+                #if "PADRINO" in raw_upper: return "PADRINO"
+                #if "KITCHEN" in raw_upper: return "KITCHEN"
                 return "JANE"
 
             except Exception as e:
-                logger.error(f"⚠️ Dispatcher error: {e}. Defaulting to JANE.")
+                logger.error(f"⚠️ Router Error: {e}. Default -> JANE.")
+                return "JANE"
+        else:
+            # SLOW TRACK (CrewAI Legacy) - No soporta imágenes bien aún
+            if isinstance(user_message, list):
+                logger.warning("⚠️ CrewAI Legacy cannot handle images yet. Defaulting to JANE.")
                 return "JANE"
 
-        else:
-            # SLOW TRACK: CrewAI (Legacy)
-            logger.info("🐢 Crew-tracking dispatcher")
-            routing_task = self.tasks.router_task(dispatcher, full_context_message, options_text)
-            routing_crew = Crew(
-                agents=[dispatcher],
-                tasks=[routing_task],
-                verbose=True
-            )
-            decision = await asyncio.to_thread(routing_crew.kickoff)
+            full_msg = f"{routing_context}\nIncoming: {user_message}"
+            task = self.tasks.router_task(dispatcher, full_msg, options_text)
+            crew = Crew(agents=[dispatcher], tasks=[task], verbose=True)
+            decision = await asyncio.to_thread(crew.kickoff)
             return str(decision).strip().upper()
 
-    async def execute_request(self, user_message: str, target_agent_key: str, chat_id: int | None = None, user: UserContext | None = None, extra_context: str | None = None):
+    async def execute_request(self, 
+                              user_message: str | list[dict[str, Any]], 
+                              target_agent_key: str, 
+                              chat_id: int | None = None, 
+                              user: UserContext | None = None, 
+                              extra_context: str | None = None) -> Any:
         """
-        Ejecuta al agente seleccionado. Si es Fast, await directo. Si es Crew, thread.
+        Ejecuta el agente final.
         """
         yaml_key = target_agent_key.lower()
-        logger.info(f"🚀 Orquestador: Activando agente '{yaml_key}' para usuario '{user.name if user else 'Unknown'}'...")
+        logger.info(f"🚀 Executing '{yaml_key}'...")
 
-        try:
-            agent = self.agents.create_agent(yaml_key)
-        except ValueError:
-            logger.warning(f"⚠️ Agente '{yaml_key}' no encontrado. Fallback a JANE.")
-            agent = self.agents.create_agent('jane')
-        
-        if not agent:
-             agent = self.agents.create_agent('jane')
+        agent = self.agents.create_agent(yaml_key) or self.agents.create_agent('jane')
 
-        # --- CONSTRUCCIÓN DEL CONTEXTO ---
-        context_parts = []
+        # Construcción del contexto (Historial + Identidad)
+        context_parts: list[str] = []
+        if extra_context: context_parts.append(f"🔥 PRIORITY CONTEXT: {extra_context}")
+        if user: context_parts.append(self._format_identity_context(user))
         
-        # [NEW] Inject Reply Context FIRST to prioritize it
-        if extra_context:
-             context_parts.append(f"🔥 ATTENTION: {extra_context}\n")
-        
-        if user:
-            context_parts.append(self._format_identity_context(user))
-
         if chat_id:
-            context_history = await self.session_manager.get_context(chat_id)
-            if context_history:
-                logger.info(f"🧠 Inyectando memoria contextual para Chat ID {chat_id}")
-                context_parts.append(f"📜 CHAT HISTORY:\n{context_history}\n")
+            # TODO: Futura mejora para historial multimodal
+            history = await self.session_manager.get_context(chat_id)
+            if history:
+                # Convertimos historial a string plano por ahora
+                history_str = "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history])
+                context_parts.append(f"📜 CHAT HISTORY:\n{history_str}")
 
-        full_context = "\n".join(context_parts)
+        full_context = "\n\n".join(context_parts)
 
-        # --- EJECUCIÓN ---
         if getattr(agent, "is_fast_agent", False):
-            # FAST TRACK
-            logger.info(f"⚡ Fast-tracking {agent.role}")
             return await agent.execute(user_message=user_message, context=full_context)
         else:
-            # SLOW TRACK
-            logger.info(f"🐢 Crew-tracking {agent.role}")
-            full_message_for_crew = f"{full_context}\n👇 CURRENT REQUEST:\n{user_message}"
+            # Fallback para CrewAI Legacy (Solo texto)
+            if isinstance(user_message, list):
+                # Extraemos texto del payload para no romper CrewAI
+                text_content = next((x['text'] for x in user_message if x['type'] == 'text'), "Image Content")
+                user_message_str = f"[User sent an image]: {text_content}"
+            else:
+                user_message_str = user_message
             
-            task1 = self.tasks.analysis_task(agent, full_message_for_crew)
+            full_message = f"{full_context}\n👇 REQUEST:\n{user_message_str}"
+            task1 = self.tasks.analysis_task(agent, full_message)
             task2 = self.tasks.response_task(agent)
-            
-            execution_crew = Crew(
-                agents=[agent],
-                tasks=[task1, task2],
-                verbose=True
-            )
-            # Bloqueante -> Thread
-            return await asyncio.to_thread(execution_crew.kickoff)
+            crew = Crew(agents=[agent], tasks=[task1, task2], verbose=True)
+            return await asyncio.to_thread(crew.kickoff)
