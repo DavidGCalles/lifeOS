@@ -83,9 +83,9 @@ class CrewOrchestrator:
                     return target_agent
                 
                 # 3. Fallback sucio
-                raw_upper = raw_response.upper()
-                if "PADRINO" in raw_upper: return "PADRINO"
-                if "KITCHEN" in raw_upper: return "KITCHEN"
+                # raw_upper = raw_response.upper()
+                # if "PADRINO" in raw_upper: return "PADRINO"
+                # if "KITCHEN" in raw_upper: return "KITCHEN"
                 
                 logger.warning(f"⚠️ JSON Extraction failed. Raw: '{raw_response[:50]}...'. Defaulting to JANE.")
                 return "JANE"
