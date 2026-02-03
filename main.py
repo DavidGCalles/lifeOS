@@ -21,6 +21,7 @@ from src.logging_config import configure_logging
 # --- SENSORY IMPORTS ---
 from src.sensory import SensoryCortex
 from src.sensory.drivers.visual_driver import VisualDriver
+from src.sensory.drivers.audio_driver import AudioDriver
 
 configure_logging()
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -137,10 +138,12 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     
     user_input: str | list[dict[str, Any]] | None = None
     is_multimodal = False
+    input_type = "text" # Default to text
 
     if sensory_payload:
         user_input = sensory_payload["content"]
         is_multimodal = True
+        input_type = sensory_payload.get("metadata", {}).get("input_type", "multimodal")
     elif update.message and update.message.text:
         user_input = update.message.text
     else:
@@ -165,7 +168,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         log_content = user_input
         if is_multimodal and isinstance(user_input, list):
             text_part = next((str(x["text"]) for x in user_input if x.get("type") == "text"), "")
-            log_content = f"[MULTIMODAL FILE] {text_part}"
+            # Aquí puedes usar el input_type para un log más preciso
+            log_content = f"[{input_type.upper()} FILE] {text_part}"
 
         if update.message:
             await SessionManager.add_message(
@@ -175,7 +179,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                     "content": log_content, 
                     "user_id": user_id, 
                     "name": current_user.name, 
-                    "message_id": update.message.message_id
+                    "message_id": update.message.message_id,
+                    "input_type": input_type 
                 }
             )
 
@@ -224,10 +229,11 @@ async def lifespan(app: FastAPI):
     
     cortex = SensoryCortex()
     cortex.register_driver('photo', VisualDriver())
+    cortex.register_driver('voice', AudioDriver())
     
     bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot_app.add_handler(CommandHandler('start', start))
-    bot_app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, chat_logic))
+    bot_app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VOICE, chat_logic))
     bot_app.add_error_handler(error_handler)
     
     app.state.bot_app = bot_app

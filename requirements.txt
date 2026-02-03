@@ -7,6 +7,7 @@ openai
 ddgs
 pytz
 pillow
+pydub
 qdrant-client
 google-cloud-firestore
 

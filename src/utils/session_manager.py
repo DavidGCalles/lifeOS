@@ -63,6 +63,7 @@ class SessionManager:
             'timestamp': firestore.SERVER_TIMESTAMP,
             'sender_id': str(message_data.get('user_id', '')),
             'name': message_data.get('name', 'Unknown'),
+            'input_type': message_data.get('input_type', 'text'),
             'agent_key': message_data.get('agent_key', None) 
         }
 
