@@ -1,3 +1,5 @@
+# src/crew_orchestrator.py
+
 import asyncio
 import json
 import re
@@ -27,25 +29,22 @@ class CrewOrchestrator:
         )
 
     def _clean_and_extract_json(self, text: str) -> dict[str, Any] | None:
+        """Intenta extraer y limpiar JSON de la respuesta del LLM."""
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
-        # Try to extract the first JSON-ish substring and normalize common LLM output quirks
+        # Regex para encontrar el primer bloque JSON
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             candidate = match.group(0)
-            # Normalize double-brace outputs like '{{ ... }}' -> '{ ... }'
-            while candidate.startswith('{{') and candidate.endswith('}}'):
-                candidate = candidate[1:-1]
-            candidate = candidate.strip()
-            # Remove surrounding Markdown code fences if present (e.g., ```json { ... } ```)
+            # Limpieza básica de markdown
             candidate = re.sub(r'^```(?:json)?\s*', '', candidate)
             candidate = re.sub(r'\s*```$', '', candidate)
             try:
                 return json.loads(candidate)
             except json.JSONDecodeError:
-                # Try a last-resort heuristic: convert single quotes to double quotes
+                # Último intento: comillas simples a dobles
                 try:
                     return json.loads(candidate.replace("'", '"'))
                 except Exception:
@@ -58,21 +57,16 @@ class CrewOrchestrator:
         """
         dispatcher = self.agents.create_agent('dispatcher')
         
-        # Si el mensaje es una lista (formato multimodal), es que lleva imagen.
-        # Cambiamos el cerebro del dispatcher al modelo visual definido en config.
+        # 1. DETECCIÓN MULTIMODAL
         if isinstance(user_message, list):
             logger.info("👁️ Visual Input detected: Dispatcher transforming to 'vision-model'")
             dispatcher.model_name = "vision-model"
-        # ---------------------------
-
+        
         options_text = self.agents.get_agents_summary()
         identity_header = self._format_identity_context(user)
-        
-        # El contexto va separado para no ensuciar el payload visual
         routing_context = f"{identity_header}\nAvailable Agents:\n{options_text}"
 
         if getattr(dispatcher, "is_fast_agent", False):
-            # ... (resto del código igual que en el paso anterior) ...
             logger.info("⚡ Routing (Fast Track)...")
             try:
                 raw_response = await dispatcher.execute(
@@ -80,26 +74,24 @@ class CrewOrchestrator:
                     context=routing_context
                 )
                 
+                # 2. PARSING JSON ESTRICTO
                 decision_data = self._clean_and_extract_json(raw_response)
                 if decision_data and "target_agent" in decision_data:
                     return str(decision_data["target_agent"]).strip().upper()
                 
-                # Fallback: try simple keyword matching on raw text (robust if model outputs plain text)
-                raw_upper = (raw_response or "").upper()
-                if "PADRINO" in raw_upper:
-                    return "PADRINO"
-                if "KITCHEN" in raw_upper or any(k in raw_upper for k in ("CENAR", "COMIDA", "INGREDIENTES", "NEVERA", "FRIDGE")):
-                    return "KITCHEN"
+                # 3. FALLBACK SEGURO (Default -> JANE)
+                # Si el modelo no devuelve un JSON claro, NO adivinamos por palabras clave.
+                # Preferimos fallar hacia el asistente general (Jane) que enviar "reformar cocina" al cocinero.
+                logger.warning(f"⚠️ Router Fallback: No valid JSON detected in '{raw_response[:50]}...'. Defaulting to JANE.")
                 return "JANE"
 
             except Exception as e:
-                logger.error(f"⚠️ Router Error: {e}. Default -> JANE.")
+                logger.error(f"⚠️ Router Error (Safety Catch): {e}. Defaulting to JANE.")
                 return "JANE"
         else:
-            # SLOW TRACK (CrewAI Legacy) - No soporta imágenes bien aún
+            # Fallback para modo lento (Legacy)
             if isinstance(user_message, list):
-                logger.warning("⚠️ CrewAI Legacy cannot handle images yet. Defaulting to JANE.")
-                return "JANE"
+                return "JANE" 
 
             full_msg = f"{routing_context}\nIncoming: {user_message}"
             task = self.tasks.router_task(dispatcher, full_msg, options_text)
@@ -113,24 +105,19 @@ class CrewOrchestrator:
                               chat_id: int | None = None, 
                               user: UserContext | None = None, 
                               extra_context: str | None = None) -> Any:
-        """
-        Ejecuta el agente final.
-        """
+        # ... (sin cambios en execute_request) ...
         yaml_key = target_agent_key.lower()
         logger.info(f"🚀 Executing '{yaml_key}'...")
 
         agent = self.agents.create_agent(yaml_key) or self.agents.create_agent('jane')
 
-        # Construcción del contexto (Historial + Identidad)
         context_parts: list[str] = []
         if extra_context: context_parts.append(f"🔥 PRIORITY CONTEXT: {extra_context}")
         if user: context_parts.append(self._format_identity_context(user))
         
         if chat_id:
-            # TODO: Futura mejora para historial multimodal
             history = await self.session_manager.get_context(chat_id)
             if history:
-                # Convertimos historial a string plano por ahora
                 history_str = "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history])
                 context_parts.append(f"📜 CHAT HISTORY:\n{history_str}")
 
@@ -139,9 +126,7 @@ class CrewOrchestrator:
         if getattr(agent, "is_fast_agent", False):
             return await agent.execute(user_message=user_message, context=full_context)
         else:
-            # Fallback para CrewAI Legacy (Solo texto)
             if isinstance(user_message, list):
-                # Extraemos texto del payload para no romper CrewAI
                 text_content = next((x['text'] for x in user_message if x['type'] == 'text'), "Image Content")
                 user_message_str = f"[User sent an image]: {text_content}"
             else:
