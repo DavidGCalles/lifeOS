@@ -77,7 +77,14 @@ class CrewOrchestrator:
                 # 2. PARSING JSON ESTRICTO
                 decision_data = self._clean_and_extract_json(raw_response)
                 if decision_data and "target_agent" in decision_data:
-                    return str(decision_data["target_agent"]).strip().upper()
+                    candidate = str(decision_data["target_agent"]).strip().upper()
+                    # Validate the decided agent exists in configuration
+                    if candidate.lower() in self.agents.config:
+                        logger.info(f"✅ Router Decision: {candidate} (raw: {raw_response[:120]})")
+                        return candidate
+                    else:
+                        logger.warning(f"⚠️ Router Decision '{candidate}' not recognized. Raw response: {raw_response[:200]}. Defaulting to JANE.")
+                        return "JANE"
                 
                 # 3. FALLBACK SEGURO (Default -> JANE)
                 # Si el modelo no devuelve un JSON claro, NO adivinamos por palabras clave.

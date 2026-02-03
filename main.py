@@ -17,6 +17,7 @@ from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
 from src.logging_config import configure_logging
+from src.social.shield import SocialShield
 
 # --- SENSORY IMPORTS ---
 from src.sensory import SensoryCortex
@@ -84,6 +85,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_chat or not update.effective_user: return
+
+    # 0. SOCIAL SHIELD CHECK
+    engage, sanitized_input = await SocialShield.should_engage(update, context)
+    if not engage:
+        logging.info(f"🛡️ Shield: Bot remains silent in chat {update.effective_chat.id}")
+        return
     
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -145,7 +152,10 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         is_multimodal = True
         input_type = sensory_payload.get("metadata", {}).get("input_type", "multimodal")
     elif update.message and update.message.text:
-        user_input = update.message.text
+        # Use sanitized text (handles removed) if Shield provided one for mention-activations
+        user_input = sanitized_input if sanitized_input is not None else update.message.text
+        if sanitized_input is not None and isinstance(user_input, str) and user_input != (update.message.text or ""):
+            logging.info(f"🔎 Sanitized input for routing: '{user_input}' (bot handle removed)")
     else:
         return
 
