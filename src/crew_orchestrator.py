@@ -31,11 +31,25 @@ class CrewOrchestrator:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
+        # Try to extract the first JSON-ish substring and normalize common LLM output quirks
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
+            candidate = match.group(0)
+            # Normalize double-brace outputs like '{{ ... }}' -> '{ ... }'
+            while candidate.startswith('{{') and candidate.endswith('}}'):
+                candidate = candidate[1:-1]
+            candidate = candidate.strip()
+            # Remove surrounding Markdown code fences if present (e.g., ```json { ... } ```)
+            candidate = re.sub(r'^```(?:json)?\s*', '', candidate)
+            candidate = re.sub(r'\s*```$', '', candidate)
             try:
-                return json.loads(match.group(0))
-            except: pass
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                # Try a last-resort heuristic: convert single quotes to double quotes
+                try:
+                    return json.loads(candidate.replace("'", '"'))
+                except Exception:
+                    pass
         return None
 
     async def route_request(self, user_message: str | list[dict[str, Any]], user: UserContext | None = None) -> str:
@@ -70,10 +84,12 @@ class CrewOrchestrator:
                 if decision_data and "target_agent" in decision_data:
                     return str(decision_data["target_agent"]).strip().upper()
                 
-                # Fallback texto sucio
-                #raw_upper = raw_response.upper()
-                #if "PADRINO" in raw_upper: return "PADRINO"
-                #if "KITCHEN" in raw_upper: return "KITCHEN"
+                # Fallback: try simple keyword matching on raw text (robust if model outputs plain text)
+                raw_upper = (raw_response or "").upper()
+                if "PADRINO" in raw_upper:
+                    return "PADRINO"
+                if "KITCHEN" in raw_upper or any(k in raw_upper for k in ("CENAR", "COMIDA", "INGREDIENTES", "NEVERA", "FRIDGE")):
+                    return "KITCHEN"
                 return "JANE"
 
             except Exception as e:

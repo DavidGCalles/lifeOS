@@ -17,6 +17,12 @@ model_list:
       api_key: os.environ/GEMINI_API_KEY
       rpm: 5    
       tpm: 250000
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemini-3-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 5    
+      tpm: 250000
 
   # ==========================================================
   # POOL 2: ROUTER (No Tools)
@@ -94,7 +100,7 @@ router_settings:
   fallbacks:
     # Agentes: Si Flash Lite (10 RPM) se llena, pasamos a Flash (5 RPM).
     # Es un carril lento, pero seguro.
-    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "local-fallback"]
+    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "gemini/gemini-3-flash-preview", "local-fallback"]
 
     
     # Router: Tenemos mucho ancho de banda (30 RPM x 4 modelos).

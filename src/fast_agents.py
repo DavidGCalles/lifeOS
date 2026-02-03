@@ -68,11 +68,30 @@ class FastTrackAgent:
                 )
                 
                 msg = response.choices[0].message
-                # Pydantic v2 dump
-                msg_dict = msg.model_dump() if hasattr(msg, "model_dump") else msg.dict()
+                # Safe serialization: avoid calling Pydantic's model_dump indiscriminately
+                # which can emit serialization warnings when the object shape differs.
+                try:
+                    if hasattr(msg, "model_dump"):
+                        # Try to create a minimal safe dict rather than trusting full dump
+                        msg_dict = {
+                            "role": getattr(msg, "role", None),
+                            "content": getattr(msg, "content", ""),
+                            "name": getattr(msg, "name", None),
+                        }
+                    elif hasattr(msg, "dict"):
+                        msg_dict = {
+                            "role": getattr(msg, "role", None),
+                            "content": getattr(msg, "content", ""),
+                            "name": getattr(msg, "name", None),
+                        }
+                    else:
+                        msg_dict = {"role": getattr(msg, "role", "assistant"), "content": str(msg)}
+                except Exception:
+                    msg_dict = {"role": getattr(msg, "role", "assistant"), "content": str(msg)}
+
                 messages.append(msg_dict)
 
-                if msg.tool_calls:
+                if getattr(msg, "tool_calls", None):
                     if self.verbose:
                         logger.info(f"   🛠️  Tool Calls: {len(msg.tool_calls)}")
 

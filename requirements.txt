@@ -4,7 +4,7 @@ python-telegram-bot[webhooks]
 crewai
 crewai-tools
 openai
-duckduckgo-search
+ddgs
 pytz
 pillow
 qdrant-client
