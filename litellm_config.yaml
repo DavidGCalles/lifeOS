@@ -18,6 +18,13 @@ model_list:
       rpm: 5    
       tpm: 250000
 
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemini-3-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 5    
+      tpm: 250000
+
   # ==========================================================
   # POOL 2: ROUTER (No Tools)
   # La familia Gemma tiene 30 RPM.
@@ -56,13 +63,34 @@ model_list:
       rpm: 30
       tpm: 15000
   
-  # Fallback de emergencia compartido (cuidado con el RPM compartido)
-  - model_name: router-model
+  #=========================================================
+  # POOL 3: VISION
+  #=========================================================
+  - model_name: vision-model
+    litellm_params:
+      model: gemini/gemini-2.5-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
+  
+  - model_name: vision-model
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
-      rpm: 5
+
+  - model_name: vision-model
+    litellm_params:
+      model: gemini/gemini-3-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 5    
       tpm: 250000
+
+  # ==========================================================
+  # POOL 4: AUDIO (Transcription & Normalization)
+  # ==========================================================
+  - model_name: audio-model
+    litellm_params:
+      model: gemini/gemini-3-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 1000 # Alto throughput para audio
 
   # ==========================================================
   # EMBEDDINGS
@@ -87,14 +115,10 @@ model_list:
 
 router_settings:
   fallbacks:
-    # Agentes: Si Flash Lite (10 RPM) se llena, pasamos a Flash (5 RPM).
-    # Es un carril lento, pero seguro.
-    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "local-fallback"]
-
-    
-    # Router: Tenemos mucho ancho de banda (30 RPM x 4 modelos).
-    # Ordenamos por "inteligencia descendente".
+    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "gemini/gemini-3-flash-preview", "local-fallback"]
     - "router-model": ["gemini/gemma-3-4b-it", "gemini/gemma-3-1b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-27b-it", "local-fallback"]
+    - "vision-model": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "gemini/gemini-3-flash-preview", "local-fallback"]
+    - "audio-model": ["gemini/gemini-3-flash-preview", "local-fallback"]
   
   allowed_fails: 1
   cooldown_time: 1 

@@ -4,8 +4,10 @@ python-telegram-bot[webhooks]
 crewai
 crewai-tools
 openai
-duckduckgo-search
+ddgs
 pytz
+pillow
+pydub
 qdrant-client
 google-cloud-firestore
 

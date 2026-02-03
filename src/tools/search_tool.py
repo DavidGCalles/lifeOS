@@ -1,5 +1,5 @@
 from crewai.tools import BaseTool
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from pydantic import BaseModel, Field
 from src.logging_config import get_logger
 logger = get_logger(__name__)
