@@ -1,130 +1,141 @@
-# 🔥 LifeOS v2: Sistema de Gobernanza Personal Multi-Agente
+# 🔥 LifeOS v2 — Personal Governance OS (Status: Active Development)
 
-> *"Tu vida es un sistema. Diséñalo o sé un esclavo del diseño de otro." - Agente Jane*
+**Última actualización:** 2026-02-03
 
-**LifeOS v2** es un sistema de gobernanza personal basado en inteligencia artificial. No es un simple chatbot; es una arquitectura de **microservicios** que orquesta un equipo de agentes autónomos (**CrewAI**) diseñados para gestionar áreas críticas de la vida. El sistema opera a través de **Telegram**, utiliza un **Proxy de LLMs** para robustez y está dotado de un sistema de **memoria dual** (conversacional y vectorial) para recordar interacciones y hechos clave.
+**LifeOS** es un sistema de gobernanza personal basado en agentes autónomos (**CrewAI**) que ayudan a convertir intención en acción. No es un simple chatbot: es una arquitectura modular, autoalojada y orientada a privacidad que combina **enrutamiento de agentes**, **memoria dual (sesiones + vector DB)** y un **proxy de LLMs (LiteLLM)** para trabajar con modelos multimodales de forma segura y sustituible.
+
+---
+
+## 🚀 Novedades (Feb 2026)
+- ✅ **Sensory Cortex (Multimodal)**: Soporte para **imágenes** (passthrough visual) y **notas de voz** (normalización + transcripción). Los inputs no textuales se procesan en `src/sensory` y se entregan a los agentes en un formato multimodal estándar.
+- ✅ **Two-Speed / Fast Track**: Canal "rápido" para intents simples (FastTrack agents) y canal "profundo" para razonamiento costoso. Implementado en `src/fast_agents.py` y `src/crew_orchestrator.py`.
+- ✅ **Proxy de LLMs (LiteLLM)** y **Memoria Semántica (Qdrant)** funcionando (configurable en `litellm_config.yaml`).
+
+---
 
 ## 🏗️ Arquitectura y Conceptos Clave
 
-El sistema está completamente dockerizado y se basa en 5 pilares fundamentales:
+- **CrewAI (Agents):** Agentes especializados declarados en `src/config/agents.yaml`. Cada agente tiene personalidad, herramientas y objetivos.
+- **LiteLLM Proxy:** Abstracción para cambiar proveedores de modelo con una configuración central.
+- **Memoria Dual:** `sessions.json` para contexto conversacional y **Qdrant** para memoria vectorial a largo plazo.
+- **Identidad / RBAC:** `IdentityManager` protege la entrada y asigna roles (`ADMIN`, `FAMILY`, `GUEST`).
+- **Sensory Cortex:** Middleware (`src/sensory/cortex.py`) que enruta `photo` y `voice` a drivers especializados (`VisualDriver`, `AudioDriver`).
 
-1.  **Orquestación de Agentes (CrewAI):** El núcleo del sistema. En lugar de un único modelo monolítico, LifeOS utiliza un "equipo" de agentes especializados (definidos en `src/config/agents.yaml`) con roles, herramientas y objetivos distintos. Un agente "enrutador" analiza la intención del usuario y delega la tarea al especialista adecuado.
+---
 
-2.  **Abstracción de LLM (LiteLLM):** Toda la comunicación con los proveedores de modelos (Google, OpenAI, etc.) se realiza a través de un proxy LiteLLM. Esto nos independiza del proveedor, permitiendo cambiar de modelo con una sola línea de YAML, establecer fallbacks automáticos y monitorizar costes de forma centralizada.
+## 🧩 Implementación de Multimodal (Detalles Técnicos)
+- **Visual (Photos):** `VisualDriver` optimiza la imagen (resize + JPEG) y la codifica en Base64 para generar un payload multimodal compatible con LLMs modernos.
+- **Audio (Voice Notes):** `AudioDriver` normaliza audio (OGG -> MP3 via `pydub`/FFmpeg), envía a un pool de transcripción (`audio-model`) y retorna la transcripción en texto para su procesamiento.
+- **Routing:** La Dispatcher puede ser multimodal; por ejemplo, una foto del refrigerador se enruta al agente `Kitchen`.
 
-3.  **Sistema de Memoria Dual:**
-    *   **Memoria Conversacional (Corto Plazo):** Un fichero `sessions.json` guarda las últimas interacciones de cada chat para mantener el contexto inmediato de la conversación (ej. "¿y qué opinas de *eso*?").
-    *   **Memoria Semántica (Largo Plazo):** Utiliza una base de datos vectorial **Qdrant** para almacenar y recuperar recuerdos a largo plazo. Los agentes pueden guardar y consultar esta memoria usando herramientas RAG.
+> Tip: Para probar localmente, envía una foto o una nota de voz al bot en Telegram. Las notas de voz se transcriben y llegan como texto; las fotos llegan como payload multimodal.
 
-4.  **Identidad y RBAC (Middleware):** Un `IdentityManager` actúa como middleware en la entrada de cada mensaje. Verifica al usuario contra un fichero `users.json`, asigna un rol (`ADMIN`, `FAMILY`, `GUEST`) y enriquece el contexto. Esto permite personalizar las respuestas y asegurar que solo usuarios autorizados interactúen con el sistema.
+---
 
-5.  **Interfaz Conversacional (Telegram):** Se eligió Telegram por su robusta API de bots, su universalidad (móvil/escritorio) y por delegar la gestión de UI y autenticación, permitiendo al equipo centrarse exclusivamente en la lógica de los agentes.
+## ✅ Requisitos e Instalación
 
-## 🤖 El Equipo (The Crew)
+### Requisitos del sistema
+- Docker & Docker Compose (opcional para despliegue). 
+- **FFmpeg** (requerido para normalizar audio). En Windows puedes instalarlo por choco o descargar binarios:
+  - Chocolatey: `choco install ffmpeg`
+  - Descargar desde https://ffmpeg.org/
 
-El equipo de agentes está definido de forma declarativa en `src/config/agents.yaml`. Cada uno tiene una personalidad, un conjunto de herramientas y un objetivo muy específico.
-
-| Agente | Rol | Objetivo |
-| :--- | :--- | :--- |
-| **Dispatcher** | Enrutador Central | Clasificar la intención del usuario y derivar al especialista correcto. |
-| **Jane** | Chief of Staff & Guardian | Coordinar la vida familiar, gestionar la agenda y velar por el bienestar. |
-| **Padrino** | Mentor de Disciplina | Mantener al usuario enfocado y libre de vicios usando lógica estoica. |
-| **Kitchen** | Kitchen Chief | Optimizar la nutrición y energía adaptándose al stock de comida disponible. |
-
-## 🚀 Instalación y Despliegue
-
-### Requisitos previos
-* Docker y Docker Compose instalados.
-* Una API Key de un proveedor de LLM compatible (ej. Google Gemini).
-* Un Token de Bot de Telegram (obtenido vía @BotFather).
-
-### 1. Clonar el repositorio
+### Python deps
 ```bash
-git clone https://github.com/DavidGCalles/lifeOS.git
-cd lifeOS
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+pip install -r requirements.txt
 ```
 
-### 2. Archivos de Configuración
-Crea los siguientes archivos en la raíz del proyecto:
+> Nota: `pydub` requiere FFmpeg en PATH.
 
-*   **.env:** Para tus secretos.
-    ```env
-    # Credenciales del proveedor de LLM (se inyectan en el proxy)
-    GEMINI_API_KEY=tu_api_key_de_google_aqui
+### Configuración mínima
+- Crea `.env` con tus credenciales (ej. `GEMINI_API_KEY`, `TELEGRAM_TOKEN`).
+- Añade `src/config/users.json` para los roles (o usa `users.json` en la raíz si prefieres).
 
-    # Token del bot de Telegram (se inyecta en la app)
-    TELEGRAM_TOKEN=tu_token_de_telegram_aqui
-    ```
-*   **users.json:** Para definir quién puede usar el bot y con qué rol.
-    ```json
-    [
-      {
-        "user_id": 123456789,
-        "name": "David",
-        "role": "ADMIN"
-      },
-      {
-        "user_id": 987654321,
-        "name": "Invitado",
-        "role": "GUEST"
-      }
-    ]
-    ```
-
-### 3. Despliegue
-Levanta la pila completa de servicios (App, Proxy LLM, Vector DB):
-
+### Levantar localmente (Docker)
 ```bash
 docker-compose up -d --build
 ```
 
-La primera vez, la descarga de las imágenes puede tardar unos minutos. Una vez levantado, el bot estará operativo en Telegram.
-
-Para ver los logs en tiempo real:
+Logs útiles:
 ```bash
 docker-compose logs -f lifeos
 ```
 
-## 📂 Estructura del Proyecto
+---
+
+## 📂 Estructura del Proyecto (rápida)
 ```
 lifeOS/
-├── data/
-│   ├── qdrant/             # Datos persistentes de la memoria vectorial
-│   └── sessions.json       # Memoria conversacional de corto plazo
-├── docs/
-│   └── adr/                # Decisiones de arquitectura documentadas
-├── docker-compose.yml      # Orquestación (App, LiteLLM, Qdrant)
-├── Dockerfile              # Imagen de la aplicación principal
-├── litellm_config.yaml     # Configuración del Proxy (Modelos, fallbacks)
-├── main.py                 # Punto de entrada (Telegram Handler + Middleware)
-├── readme.md               # Esta guía
-├── requirements.txt        # Dependencias de Python
-└── src/
-    ├── config/
-    │   ├── agents.yaml     # Definiciones declarativas de los agentes
-    │   ├── tasks.yaml      # Definiciones declarativas de las tareas
-    │   └── users.json      # Allow-list de usuarios y roles
-    ├── crew_orchestrator.py# Lógica de enrutamiento y ejecución de Crews
-    ├── identity_manager.py # Middleware de Identidad y RBAC
-    ├── memory_manager.py   # Gestor de la memoria vectorial (Qdrant)
-    ├── utils/
-    │   └── session_manager.py # Gestor de la memoria conversacional
-    └── tools/
-        ├── memory_tool.py  # Herramienta para que los agentes usen la memoria
-        └── ...             # Otras herramientas (búsqueda, calculadora, etc.)
+├── data/                  # Qdrant, sessions.json
+├── docs/                  # Vision, PRD, ADRs
+├── docker-compose.yml
+├── litellm_config.yaml
+├── main.py                # FastAPI + Telegram lifecycle + Sensory registrations
+├── src/
+│   ├── sensory/           # Sensory Cortex + drivers (visual, audio)
+│   ├── crew_orchestrator.py
+│   ├── fast_agents.py     # Fast Track agents
+│   ├── memory_manager.py  # Qdrant integration
+│   └── ...
+└── requirements.txt
 ```
 
-## 🔮 Roadmap
-- [x] **Arquitectura Multi-Agente:** Implementado con CrewAI.
-- [x] **Proxy de LLMs:** Implementado con LiteLLM.
-- [x] **Memoria Conversacional:** Implementada con `sessions.json`.
-- [x] **Identidad y RBAC:** Implementado con `IdentityManager` y `users.json`.
-- [x] **Memoria a Largo Plazo (v1):** Implementada con Qdrant.
-- [x] **Migración de VectorDB:** Migración a Qdrant completada para optimizaciones de producción.
-- [ ] **"The Council":** Implementar lógica de debate y consenso entre agentes para decisiones complejas.
-- [ ] **Despliegue en Cloud:** Crear configuración para despliegue en GCP (Cloud Run).
+---
+
+## 🛠️ Roadmap (Siguientes implementaciones)
+```mermaid
+graph TD
+    %% DEFINICIÓN DE CLASES Y ESTILOS
+    classDef urgent fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#fff;
+    classDef high fill:#e67e22,stroke:#d35400,stroke-width:2px,color:#fff;
+    classDef complex fill:#8e44ad,stroke:#2c3e50,stroke-width:2px,color:#fff;
+    classDef done fill:#27ae60,stroke:#2ecc71,stroke-width:2px,color:#fff;
+
+    %% --- FASE 1: PROTOCOLOS DE INTERACCIÓN ---
+    subgraph Phase1 [Fase 1: Social Logic & Interaction]
+        direction TB
+        FR16_Logic(<b>FR-16: Group Governance Middleware</b><br/>Scope: main.py Routing<br/>Status: Ready to Dev):::urgent
+        FR16_Logs(<b>Passive Interaction Logging</b><br/>Scope: SessionManager<br/>Status: Definition):::urgent
+    end
+
+    %% --- FASE 2: INGESTA DE DOCUMENTOS ---
+    subgraph Phase2 [Fase 2: Deep Ingestion Service]
+        direction TB
+        FR17_Doc(<b>FR-17: Document Parser</b><br/>Scope: Sensory Cortex<br/>Input: Direct File Upload):::high
+        FR17_Drive(<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Input: Linked Resources):::high
+    end
+
+    %% --- FASE 3: ARQUITECTURA DE MEMORIA ---
+    subgraph Phase3 [Fase 3: Unified Memory Core]
+        direction TB
+        ADR12_Interface(<b>ADR-012: Memory Abstraction Layer</b><br/>Refactors: FR-07, FR-08<br/>Target: Unified I/O):::complex
+        ADR12_RAG(<b>Context Retention Policy</b><br/>Scope: Lifecycle Management<br/>Logic: Short-Term vs Long-Term):::complex
+    end
+
+    %% DEPENDENCIAS
+    FR16_Logic --> FR16_Logs
+    FR16_Logs --> FR17_Doc
+    FR17_Doc --> FR17_Drive
+    FR17_Drive --> ADR12_Interface
+    ADR12_Interface --> ADR12_RAG
+
+    %% FLUJO
+    Start((START)) --> Phase1
+    Phase3 --> End((Production))
+```
+
+---
+
+## 🔗 Documentación y ADRs
+- Vision: `docs/vision-document.md`
+- Product Requirements: `docs/product-requirements-document.md`
+- ADRs: `docs/adr/00*-*.md` (ej. `011-multimodal-strategy.md`)
+
+---
 
 ## ⚠️ Disclaimer
-Este es un proyecto personal de ingeniería de software. Los agentes tienen instrucciones de comportamiento que pueden ser directas o "particulares" (ej. "Padrino"). El objetivo es la eficiencia, no necesariamente el confort. Úsese bajo su propio riesgo.
+Proyecto personal de ingeniería. Úsalo con precaución y responsabilidad; algunas capacidades planeadas (p.ej. actuadores financieros reales) requieren trabajo extra y validaciones legales antes de otorgar permisos de escritura automáticos.
 
 Built with ❤️ and ☕ by David G. Calles.

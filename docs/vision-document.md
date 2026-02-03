@@ -3,7 +3,7 @@
 
 | Metadata | Detail |
 | :--- | :--- |
-| **Version** | 3.0 (The North Star) |
+| **Version** | 3.1|
 | **Scope** | Aspirational / Strategic |
 | **Horizon** | 3 - 5 Years |
 
@@ -42,10 +42,10 @@ graph LR
 We live in an attention economy designed to fragment concentration and extract behavioral data. Current productivity tools (SaaS) have perverse incentives:
 1.  **Data Lock-in:** Your memories, notes, and schedule are held hostage in closed silos (Notion, Google, Apple).
 2.  **Optimization for Engagement:** Apps want you to spend time *organizing* them, not executing.
-3.  **Lack of Alignment:** A generic assistant (ChatGPT/Siri) serves the "average", not *your* specific goals. It won't scold you if you fail because it is programmed to be compliant, not effective.
+3.  **Lack of Alignment:** A generic assistant serves the "average", not *your* specific goals. It won't scold you if you fail because it is programmed to be compliant, not effective.
 
 ### 1.2 Problem Statement
-**The modern individual lacks the necessary cognitive infrastructure to compete with organizations and algorithms.** Without an external system that reinforces discipline, remembers context, and automates bureaucracy, the individual loses their **Agency**.
+**The modern individual lacks the necessary cognitive infrastructure to compete with organizations and algorithms.** Without an external system that reinforces discipline, remembers context, digests information, and automates bureaucracy, the individual loses their **Agency**.
 
 ---
 
@@ -68,15 +68,15 @@ Its ultimate goal is to **eliminate the friction between Intention and Action**.
 
 These are the capabilities the system *must eventually possess* to fulfill its vision, beyond today's code limitations.
 
-### 3.1 Invisible Omnipresence (Zero-UI)
-The optimal goal is for the interface to disappear.
+### 3.1 Invisible Omnipresence & Social Grace (Zero-UI)
+The optimal goal is for the interface to disappear and behave appropriately in every context.
 * **Today:** Chat on Telegram.
-* **Vision:** The system passively "listens" and "sees" (via wearables, secure ambient microphones). It understands context without explicit commands. If you walk into the kitchen, the *Kitchen* agent already knows what ingredients are missing without you asking.
+* **Vision:** The system passively "listens" and "sees" via wearables. Crucially, it possesses **Social Protocol**: it acts as a proactive Chief of Staff in private (1:1), but becomes a **Silent Observer** in public groups, intervening only when summoned or to avert a crisis. It understands that "Invisibility" is its greatest feature.
 
 ### 3.2 Infinite and Perfect Memory (Total Recall)
 The system must act as a real-time biographer.
 * **Vision:** Not just remembering data, but **synthesizing wisdom**. The system should be able to answer: *"Based on your journals from the last 5 years, you tend to get depressed in November. I have booked preventive therapy and purchased Vitamin D."*
-* **Sovereignty:** This biographical database (vector) lives on a physical hard drive in the user's home, encrypted. It never trains public models.
+* **Sovereignty:** This biographical database lives on a physical hard drive in the user's home, encrypted. It never trains public models.
 
 ### 3.3 Programmable Psychology (Morphological Personality)
 The user must be able to "program their own superego."
@@ -84,7 +84,11 @@ The user must be able to "program their own superego."
 
 ### 3.4 Autonomous Agents with "Skin in the Game"
 Agents cease to be passive chatbots and become actors with real permissions.
-* **Vision:** The *Finance* agent doesn't "suggest" you save. It has read/write permission on the bank account to move money to investment accounts automatically or block the credit card if it detects an impulsive spending pattern (according to pre-approved rules).
+* **Vision:** The *Finance* agent doesn't "suggest" you save. It has read/write permission on the bank account to move money to investment accounts automatically or block the credit card if it detects an impulsive spending pattern.
+
+### 3.5 Deep Knowledge Digestion (The Reader)
+The system functions as a high-speed information processor.
+* **Vision:** The user should never have to read a 50-page legal contract or a dense technical manual unless they want to. LifeOS ingests external documents (PDFs, Links, Books), extracts the *critical truth*, and presents the decision-ready summary. It is the shield against information overload.
 
 ---
 
