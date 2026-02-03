@@ -7,8 +7,9 @@ import re
 from contextlib import asynccontextmanager
 from typing import Any
 from fastapi import FastAPI, Request, Response
-from telegram import Update
+from telegram import Update, Message
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from telegram.error import TelegramError
 
 from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
@@ -34,6 +35,47 @@ session_manager = SessionManager()
 orchestrator = CrewOrchestrator(session_manager=session_manager)
 
 # --- Lógica del Bot ---
+async def send_smart_response(update: Update, text: str) -> Message | None:
+    """
+    Trocea mensajes > 4096 caracteres para evitar el crash de Telegram.
+    Devuelve el último mensaje enviado para fines de logging.
+    """
+    MAX_LENGTH = 4000 # Margen de seguridad
+    
+    if not text: return None
+    if not isinstance(text, str): text = str(text)
+
+    last_msg = None
+
+    # Caso 1: Mensaje corto (envío directo)
+    if len(text) <= MAX_LENGTH:
+        try:
+            last_msg = await update.message.reply_text(text, parse_mode='Markdown')
+        except TelegramError:
+            last_msg = await update.message.reply_text(text)
+        return last_msg
+
+    # Caso 2: Mensaje largo (Chunking)
+    chunks = []
+    while text:
+        if len(text) <= MAX_LENGTH:
+            chunks.append(text)
+            break
+        
+        split_index = text.rfind('\n', 0, MAX_LENGTH)
+        if split_index == -1: 
+            split_index = MAX_LENGTH
+            
+        chunks.append(text[:split_index])
+        text = text[split_index:].lstrip()
+
+    for chunk in chunks:
+        try:
+            last_msg = await update.message.reply_text(chunk, parse_mode='Markdown')
+        except TelegramError:
+            last_msg = await update.message.reply_text(chunk)
+    
+    return last_msg
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_chat:
@@ -47,7 +89,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     # 1. Identidad
     current_user = await IdentityManager.get_user(user_id)
-    # --- 🚧 PROTOCOLO DE INTERCEPCIÓN (PENDING/BLOCKED) 🚧 ---
+    
+    # --- 🚧 PROTOCOLO DE INTERCEPCIÓN 🚧 ---
     if current_user.role == UserRole.BLOCKED:
         logging.info(f"🚫 Usuario bloqueado {user_id} intentó contactar.")
         return 
@@ -83,7 +126,6 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 logging.error(f"❌ Error al avisar al ADMIN: {e}")
         
         return 
-    
     # --- FIN PROTOCOLO INICIAL ---
 
     logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
@@ -91,21 +133,17 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     # 2. SENSORY CORTEX PROCESSING
-    # El Córtex decide si hay imagen, texto o nada.
     sensory_payload = await SensoryCortex().process(update)
     
     user_input: str | list[dict[str, Any]] | None = None
     is_multimodal = False
 
     if sensory_payload:
-        # Es una imagen/audio -> Lista de dicts
         user_input = sensory_payload["content"]
         is_multimodal = True
     elif update.message and update.message.text:
-        # Es texto plano -> String
         user_input = update.message.text
     else:
-        # Nada procesable (Sticker, edit, etc que no manejamos)
         return
 
     # 3. ENRUTAMIENTO Y EJECUCIÓN
@@ -113,7 +151,6 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         target_agent = None
         bypass_context = None
 
-        # Reply-To Check
         if update.message and update.message.reply_to_message:
             parent_id = update.message.reply_to_message.message_id
             parent_meta = await SessionManager.get_message_metadata(chat_id, parent_id)
@@ -122,14 +159,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 bypass_context = f"User replying to: '{parent_meta.get('content', '...')}'."
 
         if not target_agent:
-            # El router recibe el input (sea texto o lista)
             target_agent = await orchestrator.route_request(user_input, current_user)
         
         # LOGGING (SANITIZED)
-        # No guardamos el base64 en Firestore.
         log_content = user_input
         if is_multimodal and isinstance(user_input, list):
-            # Buscamos el caption si existe
             text_part = next((str(x["text"]) for x in user_input if x.get("type") == "text"), "")
             log_content = f"[MULTIMODAL FILE] {text_part}"
 
@@ -155,30 +189,25 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         respuesta_str = str(respuesta)
         
-        # Enviar respuesta
-        try:
-            sent_msg = await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🤖 *[{target_agent}]*\n\n{respuesta_str}",
-                parse_mode='Markdown'
-            )
-        except Exception:
-            sent_msg = await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🤖 [{target_agent}]\n\n{respuesta_str}"
-            )
+        # --- ENVÍO SEGURO (FIXED) ---
+        # Usamos send_smart_response en lugar de send_message directo
+        # Y capturamos sent_msg para el log posterior
+        sent_msg = await send_smart_response(update, f"🤖 *[{target_agent}]*\n\n{respuesta_str}")
 
-        await SessionManager.add_message(
-            chat_id,
-            {
-                "role": "assistant", 
-                "content": respuesta_str, 
-                "user_id": context.bot.id, 
-                "name": "LifeOS", 
-                "message_id": sent_msg.message_id,
-                "agent_key": target_agent 
-            }
-        )
+        if sent_msg:
+            await SessionManager.add_message(
+                chat_id,
+                {
+                    "role": "assistant", 
+                    "content": respuesta_str, 
+                    "user_id": context.bot.id, 
+                    "name": "LifeOS", 
+                    "message_id": sent_msg.message_id,
+                    "agent_key": target_agent 
+                }
+            )
+        else:
+            logging.warning("⚠️ No se pudo enviar mensaje de respuesta (sent_msg es None).")
 
     except Exception as e:
         logging.error("Error en proceso: %s", e, exc_info=True)
@@ -193,13 +222,11 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 async def lifespan(app: FastAPI):
     logging.info(f"🚀 Iniciando LifeOS ({RUN_MODE})...")
     
-    # INICIALIZACIÓN SENSORIAL
     cortex = SensoryCortex()
     cortex.register_driver('photo', VisualDriver())
     
     bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot_app.add_handler(CommandHandler('start', start))
-    # Aceptamos TEXTO y FOTOS
     bot_app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO, chat_logic))
     bot_app.add_error_handler(error_handler)
     
