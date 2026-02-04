@@ -161,7 +161,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
     inject_runtime_context(current_user)
-    #await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     user_input: str | list[dict[str, Any]] | None = None
     is_multimodal = False
@@ -179,6 +179,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     else:
         return
 
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     # 3. ENRUTAMIENTO Y EJECUCIÓN
     try:
         target_agent = None
@@ -197,7 +198,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # LOGGING (SANITIZED)
         # Use shared builder to produce consistent log content and input_type
         log_content, input_type = SessionManager.build_log_content(sensory_payload, sanitized_input, update.message)
-
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         if update.message:
             await SessionManager.add_message(
                 chat_id,
@@ -212,6 +213,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             )
 
         # EJECUCIÓN
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         respuesta = await orchestrator.execute_request(
             user_message=user_input, 
             target_agent_key=str(target_agent), 
