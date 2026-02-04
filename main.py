@@ -86,14 +86,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_chat or not update.effective_user: return
 
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+
+    # 1. SENSORY CORTEX PROCESSING (run before Social Shield to ensure payload/logging is set)
+    sensory_payload = await SensoryCortex().process(update)
+
     # 0. SOCIAL SHIELD CHECK
     engage, sanitized_input = await SocialShield.should_engage(update, context)
     if not engage:
-        logging.info(f"🛡️ Shield: Bot remains silent in chat {update.effective_chat.id}")
+        logging.info(f"🛡️ Shield: Bot remains silent in chat {chat_id}")
+        # Passive Context Ingestion: if this was a non-trigger message in a group, persist it (Firestore write only)
+        chat_type = update.effective_chat.type
+        if chat_type in ['group', 'supergroup']:
+            try:
+                log_content, input_type = SessionManager.build_log_content(sensory_payload, sanitized_input, update.message)
+                name = getattr(update.effective_user, 'first_name', None) or getattr(update.effective_user, 'username', 'Unknown')
+                await SessionManager.add_message(
+                    chat_id,
+                    {
+                        "role": "user",
+                        "content": log_content,
+                        "user_id": user_id,
+                        "name": name,
+                        "message_id": getattr(update.message, 'message_id', ''),
+                        "input_type": input_type
+                    }
+                )
+                logging.info(f"💾 Passive ingestion: saved non-trigger message for chat {chat_id}")
+            except Exception as e:
+                logging.warning(f"⚠️ Passive ingestion failed for chat {chat_id}: {e}")
         return
-    
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
 
     # 1. Identidad
     current_user = await IdentityManager.get_user(user_id)
@@ -138,11 +161,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
     inject_runtime_context(current_user)
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    #await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # 2. SENSORY CORTEX PROCESSING
-    sensory_payload = await SensoryCortex().process(update)
-    
     user_input: str | list[dict[str, Any]] | None = None
     is_multimodal = False
     input_type = "text" # Default to text
@@ -175,22 +195,19 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             target_agent = await orchestrator.route_request(user_input, current_user)
         
         # LOGGING (SANITIZED)
-        log_content = user_input
-        if is_multimodal and isinstance(user_input, list):
-            text_part = next((str(x["text"]) for x in user_input if x.get("type") == "text"), "")
-            # Aquí puedes usar el input_type para un log más preciso
-            log_content = f"[{input_type.upper()} FILE] {text_part}"
+        # Use shared builder to produce consistent log content and input_type
+        log_content, input_type = SessionManager.build_log_content(sensory_payload, sanitized_input, update.message)
 
         if update.message:
             await SessionManager.add_message(
                 chat_id,
                 {
-                    "role": current_user.role.value, 
-                    "content": log_content, 
-                    "user_id": user_id, 
-                    "name": current_user.name, 
+                    "role": current_user.role.value,
+                    "content": log_content,
+                    "user_id": user_id,
+                    "name": current_user.name,
                     "message_id": update.message.message_id,
-                    "input_type": input_type 
+                    "input_type": input_type
                 }
             )
 
@@ -204,9 +221,6 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         respuesta_str = str(respuesta)
         
-        # --- ENVÍO SEGURO (FIXED) ---
-        # Usamos send_smart_response en lugar de send_message directo
-        # Y capturamos sent_msg para el log posterior
         sent_msg = await send_smart_response(update, f"🤖 *[{target_agent}]*\n\n{respuesta_str}")
 
         if sent_msg:

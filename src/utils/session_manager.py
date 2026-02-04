@@ -77,6 +77,38 @@ class SessionManager:
             logger.warning(f"⚠️ Error guardando mensaje en Firestore: {e}")
 
     @classmethod
+    def build_log_content(cls, sensory_payload: dict | None, sanitized_input: str | None, message) -> tuple[str, str]:
+        """
+        Utility to produce a lightweight log content and input_type from either a sensory payload
+        or plain message text / sanitized_input. Returns (log_content, input_type).
+
+        This is intentionally simple and only prepares strings for Firestore writes — no analysis
+        or vectorization is performed here.
+        """
+        # Default
+        input_type = 'text'
+        log_content = ''
+
+        if sensory_payload:
+            content = sensory_payload.get('content', '')
+            metadata = sensory_payload.get('metadata', {}) or {}
+            input_type = metadata.get('input_type', 'multimodal' if isinstance(content, list) else 'text')
+
+            if isinstance(content, list):
+                text_part = next((str(x.get('text', '')) for x in content if x.get('type') == 'text'), '')
+                if text_part:
+                    log_content = f"[{input_type.upper()} FILE] {text_part}"
+                else:
+                    log_content = f"[{input_type.upper()} FILE]"
+            else:
+                log_content = str(content)
+        else:
+            log_content = sanitized_input if sanitized_input is not None else (getattr(message, 'text', '') or '')
+            input_type = 'text'
+
+        return log_content, input_type
+
+    @classmethod
     async def get_context(cls, chat_id: int | str, limit: int = 15) -> list[dict[str, Any]]:
         """
         Recupera historial reciente (Async).
