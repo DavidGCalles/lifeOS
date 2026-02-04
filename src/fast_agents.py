@@ -68,27 +68,20 @@ class FastTrackAgent:
                 )
                 
                 msg = response.choices[0].message
-                # Safe serialization: avoid calling Pydantic's model_dump indiscriminately
-                # which can emit serialization warnings when the object shape differs.
-                try:
-                    if hasattr(msg, "model_dump"):
-                        # Try to create a minimal safe dict rather than trusting full dump
-                        msg_dict = {
-                            "role": getattr(msg, "role", None),
-                            "content": getattr(msg, "content", ""),
-                            "name": getattr(msg, "name", None),
-                        }
-                    elif hasattr(msg, "dict"):
-                        msg_dict = {
-                            "role": getattr(msg, "role", None),
-                            "content": getattr(msg, "content", ""),
-                            "name": getattr(msg, "name", None),
-                        }
-                    else:
-                        msg_dict = {"role": getattr(msg, "role", "assistant"), "content": str(msg)}
-                except Exception:
-                    msg_dict = {"role": getattr(msg, "role", "assistant"), "content": str(msg)}
+                msg_dict = {
+                    "role": getattr(msg, "role", "assistant"),
+                    "content": getattr(msg, "content", "") or "",
+                }
+                
+                # 2. Si el modelo quiere usar herramientas, guardamos esa intención
+                # (Aquí aprovechamos que ya vamos a acceder a tool_calls después)
+                if getattr(msg, "tool_calls", None):
+                    msg_dict["tool_calls"] = [
+                        t.model_dump() if hasattr(t, "model_dump") else t.dict() 
+                        for t in msg.tool_calls
+                    ]
 
+                # 3. Guardamos en el historial AHORA que está completo
                 messages.append(msg_dict)
 
                 if getattr(msg, "tool_calls", None):
