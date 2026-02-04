@@ -38,18 +38,16 @@ def _handle_async_exception(loop, context):
         # For all other exceptions, use the default handler to ensure they are logged.
         logging.getLogger("asyncio").error(f"Unhandled asyncio error: {context.get('message')}", exc_info=exception)
 
-def setup_asyncio_exception_handler():
+def install_grpc_noise_filter(loop: asyncio.AbstractEventLoop):
     """
-    Sets a custom exception handler for the current event loop policy.
-    This ensures that all new event loops in the current thread get our handler,
-    solving the startup race condition with FastAPI/Uvicorn.
+    Sets the custom exception handler for the given asyncio event loop
+    to suppress benign gRPC BlockingIOErrors.
     """
     try:
-        policy = asyncio.get_event_loop_policy()
-        policy.set_exception_handler(_handle_async_exception)
-        logging.getLogger(__name__).info("✅ Custom asyncio exception handler policy set.")
+        loop.set_exception_handler(_handle_async_exception)
+        logging.getLogger(__name__).info("✅ Custom asyncio exception handler installed.")
     except Exception as e:
-        logging.getLogger(__name__).warning(f"Could not set asyncio exception handler policy: {e}")
+        logging.getLogger(__name__).warning(f"Could not install asyncio exception handler: {e}")
 
 
 def configure_logging(level: Optional[str | int] = None, log_file: Optional[str] = None, fmt: Optional[str] = None, datefmt: Optional[str] = None, force: bool = False) -> None:
@@ -104,9 +102,6 @@ def configure_logging(level: Optional[str | int] = None, log_file: Optional[str]
     
     # FIX: Tame noisy gRPC library logs
     logging.getLogger("grpc").setLevel(logging.WARNING)
-
-    # Set the custom asyncio exception handler for all new event loops in this thread
-    setup_asyncio_exception_handler()
 
     _configured = True
 

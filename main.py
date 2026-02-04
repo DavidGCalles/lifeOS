@@ -10,13 +10,14 @@ from fastapi import FastAPI, Request, Response
 from telegram import Update, Message
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from telegram.error import TelegramError
+import asyncio
 
 from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
-from src.logging_config import configure_logging
+from src.logging_config import configure_logging, install_grpc_noise_filter
 from src.social.shield import SocialShield
 
 # --- SENSORY IMPORTS ---
@@ -34,6 +35,36 @@ ADMIN_USER_ID = os.getenv('ADMIN_USER_ID')
 
 session_manager = SessionManager()
 orchestrator = CrewOrchestrator(session_manager=session_manager)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Context manager to run startup and shutdown logic."""
+    # This part runs when the application starts up
+    loop = asyncio.get_running_loop()
+    install_grpc_noise_filter(loop)
+    
+    # Initialize and start the Sensory Cortex in the background
+    cortex = SensoryCortex.get_instance()
+    # Initialize drivers
+    visual_driver = VisualDriver()
+    audio_driver = AudioDriver()
+    # Register drivers
+    cortex.register_driver(visual_driver, "visual")
+    cortex.register_driver(audio_driver, "audio")
+    
+    cortex_task = asyncio.create_task(cortex.run_forever())
+    
+    yield
+    
+    # This part runs when the application shuts down
+    cortex_task.cancel()
+    try:
+        await cortex_task
+    except asyncio.CancelledError:
+        logging.getLogger(__name__).info("Sensory Cortex shutdown complete.")
+
+app = FastAPI(lifespan=lifespan)
+
 
 # --- Lógica del Bot ---
 async def send_smart_response(update: Update, text: str) -> Message | None:
