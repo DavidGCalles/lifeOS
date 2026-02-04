@@ -249,6 +249,40 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # --- 🔇 SILENCIADOR DE RUIDO gRPC ---
+    import asyncio
+    
+    # Obtenemos el loop actual y su manejador por defecto (si existe)
+    loop = asyncio.get_running_loop()
+    default_handler = loop.get_exception_handler()
+
+    def custom_exception_handler(loop, context):
+        # 1. Análisis de la Excepción (Si existe)
+        if "exception" in context:
+            exc = context["exception"]
+            # Captura BlockingIOError directo o OSError con errno 11 (EAGAIN)
+            if isinstance(exc, (BlockingIOError, InterruptedError)):
+                return
+            if isinstance(exc, OSError) and exc.errno == 11:
+                return
+        
+        # 2. Análisis del Mensaje (Red de seguridad por si no hay objeto exception)
+        # A veces gRPC/Asyncio pasan el error como texto en el mensaje
+        msg = context.get("message", "")
+        if "Resource temporarily unavailable" in msg or "BlockingIOError" in msg:
+            return
+            
+        # Para todo lo demás, delegar
+        if default_handler:
+            default_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+
+    # Instalamos el filtro en el loop activo
+    loop.set_exception_handler(custom_exception_handler)
+    logging.info("✅ Filtro de ruido gRPC (Errno 11) instalado en asyncio loop.")
+    # ------------------------------------
+
     logging.info(f"🚀 Iniciando LifeOS ({RUN_MODE})...")
     
     cortex = SensoryCortex()
@@ -299,4 +333,4 @@ async def telegram_webhook(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, loop="asyncio")
