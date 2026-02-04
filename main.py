@@ -25,7 +25,6 @@ from src.sensory.drivers.visual_driver import VisualDriver
 from src.sensory.drivers.audio_driver import AudioDriver
 
 configure_logging()
-logging.getLogger("httpx").setLevel(logging.WARNING)
 
 TELEGRAM_TOKEN = load_credentials()
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
@@ -159,10 +158,6 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return 
     # --- FIN PROTOCOLO INICIAL ---
 
-    logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
-    inject_runtime_context(current_user)
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
     user_input: str | list[dict[str, Any]] | None = None
     is_multimodal = False
     input_type = "text" # Default to text
@@ -179,7 +174,10 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     else:
         return
 
+    logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
+    inject_runtime_context(current_user)
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
     # 3. ENRUTAMIENTO Y EJECUCIÓN
     try:
         target_agent = None

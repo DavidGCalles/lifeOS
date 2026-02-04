@@ -1,6 +1,11 @@
 import json
 import os
 import logging
+
+# FIX: Set gRPC environment variable to prevent noisy shutdown errors with uvloop.
+# This must be set before any grpc-related libraries (like firestore) are imported.
+os.environ["GRPC_ENABLE_FORK_SUPPORT"] = "0"
+
 from pathlib import Path
 from enum import StrEnum, auto
 from pydantic import BaseModel
@@ -36,7 +41,6 @@ class UserContext(BaseModel):
 class IdentityManager:
     _users_db: dict[str, dict] = {}
     _loaded_local: bool = False
-    _firestore_client: AsyncClient | None = None
     
     _USE_FIRESTORE = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
     _DB_NAME = os.getenv('FIRESTORE_DB_NAME')
@@ -44,16 +48,17 @@ class IdentityManager:
 
     @classmethod
     def _get_firestore_client(cls) -> AsyncClient | None:
-        if cls._firestore_client is None and cls._USE_FIRESTORE:
+        # FIX: No caching. Always create a new client.
+        # This solves the "different loop" issue when tools use asyncio.run().
+        if cls._USE_FIRESTORE:
             try:
                 if cls._DB_NAME:
-                    cls._firestore_client = AsyncClient(database=cls._DB_NAME)
+                    return AsyncClient(database=cls._DB_NAME)
                 else:
-                    cls._firestore_client = AsyncClient()
+                    return AsyncClient()
             except Exception as e:
-                logger.error(f"❌ Error conectando a Firestore (Async): {e}")
-                cls._firestore_client = None
-        return cls._firestore_client
+                logger.error(f"❌ Error connecting to Firestore (Async): {e}")
+        return None
 
     @classmethod
     def _load_local_users(cls) -> None:
@@ -166,3 +171,48 @@ class IdentityManager:
         except Exception as e:
             logger.error(f"❌ Error escribiendo en Firestore: {e}")
             return False
+
+    @classmethod
+    async def get_user_by_name(cls, name: str) -> UserContext | None:
+        """
+        Intenta encontrar un UserContext por nombre. Prioriza Firestore.
+        """
+        # Normalizar nombre para búsqueda case-insensitive
+        normalized_name = name.strip().lower()
+
+        if cls._USE_FIRESTORE:
+            db = cls._get_firestore_client()
+            if db:
+                try:
+                    # Realiza una query para buscar por el campo 'name'
+                    # Firestore requiere índices para queries de rango/ordenación o igualdad en campos no ID.
+                    # Asumimos que 'name' no es un campo muy grande y que los nombres serán únicos
+                    # o que aceptamos el primer match.
+                    users_ref = db.collection('users').where('name', '==', name).limit(1)
+                    async for doc in users_ref.stream():
+                        data = doc.to_dict()
+                        role_str = data.get("role", "pending").lower()
+                        return UserContext(
+                            telegram_id=doc.id,  # El ID del documento es el telegram_id
+                            name=data.get("name", "Unknown"),
+                            role=UserRole(role_str),
+                            description=data.get("description"),
+                            calendar_id=data.get("calendar_id")
+                        )
+                except Exception as e:
+                    logger.error(f"⚠️ Fallo búsqueda por nombre en Firestore: {e}")
+
+        # Fallback a búsqueda local (si aplica)
+        cls._load_local_users()
+        for tid, data in cls._users_db.items():
+            if data.get('name', '').lower() == normalized_name:
+                return UserContext(
+                    telegram_id=tid,
+                    name=data.get("name"),
+                    role=UserRole(data.get("role", "guest").lower()),
+                    description=data.get("description"),
+                    calendar_id=data.get("calendar_id")
+                )
+        
+        logger.info(f"IdentityManager: No user found for name '{name}'")
+        return None

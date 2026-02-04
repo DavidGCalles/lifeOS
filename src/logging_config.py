@@ -19,8 +19,37 @@ import logging
 import logging.handlers
 import os
 from typing import Optional
+import asyncio
 
 _configured = False
+
+def _handle_async_exception(loop, context):
+    """
+    Custom exception handler for asyncio to suppress benign BlockingIOErrors.
+    These errors are noise from gRPC/uvloop during ungraceful shutdowns of tools.
+    """
+    exception = context.get("exception")
+    
+    # We are only interested in suppressing the specific "Resource temporarily unavailable" error.
+    if isinstance(exception, BlockingIOError) and "Resource temporarily unavailable" in str(context.get("message", "")):
+        # Log it at a DEBUG level for inspection but otherwise ignore it.
+        logging.getLogger("asyncio").debug(f"Suppressing known gRPC BlockingIOError: {context.get('message')}")
+    else:
+        # For all other exceptions, use the default handler to ensure they are logged.
+        logging.getLogger("asyncio").error(f"Unhandled asyncio error: {context.get('message')}", exc_info=exception)
+
+def setup_asyncio_exception_handler():
+    """
+    Sets a custom exception handler for the current event loop policy.
+    This ensures that all new event loops in the current thread get our handler,
+    solving the startup race condition with FastAPI/Uvicorn.
+    """
+    try:
+        policy = asyncio.get_event_loop_policy()
+        policy.set_exception_handler(_handle_async_exception)
+        logging.getLogger(__name__).info("✅ Custom asyncio exception handler policy set.")
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Could not set asyncio exception handler policy: {e}")
 
 
 def configure_logging(level: Optional[str | int] = None, log_file: Optional[str] = None, fmt: Optional[str] = None, datefmt: Optional[str] = None, force: bool = False) -> None:
@@ -67,9 +96,17 @@ def configure_logging(level: Optional[str | int] = None, log_file: Optional[str]
 
     root.setLevel(resolved_level)
 
-    # Tame noisy libraries
-    logging.getLogger('httpx').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    # Tame noisy libraries (ej. httpcore/x)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("google").setLevel(logging.WARNING)
+    
+    # FIX: Tame noisy gRPC library logs
+    logging.getLogger("grpc").setLevel(logging.WARNING)
+
+    # Set the custom asyncio exception handler for all new event loops in this thread
+    setup_asyncio_exception_handler()
 
     _configured = True
 

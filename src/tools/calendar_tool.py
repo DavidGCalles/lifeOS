@@ -5,6 +5,8 @@ from src.tools.google_base import GoogleServiceFactory
 from src.identity_manager import UserContext
 import pytz
 from src.logging_config import get_logger
+import uuid
+
 logger = get_logger(__name__) 
 
 class CalendarListInput(BaseModel):
@@ -109,6 +111,7 @@ class CalendarAddInput(BaseModel):
     start_time: str = Field(..., description="Start time in format 'YYYY-MM-DD HH:MM' (24h). Example: '2025-10-25 14:30'.")
     duration_minutes: int = Field(60, description="Duration in minutes. Default is 60.")
     description: str = Field("", description="Optional details or description for the event.")
+    attendee_emails: list[str] = Field(default_factory=list, description="Optional list of email addresses of attendees to invite.")
 
 # --- HERRAMIENTA DE ESCRITURA ---
 class CalendarAddTool(BaseTool):
@@ -125,7 +128,7 @@ class CalendarAddTool(BaseTool):
     def set_context(self, user: UserContext):
         self._current_user = user
 
-    def _run(self, summary: str, start_time: str, duration_minutes: int = 60, description: str = "") -> str:
+    def _run(self, summary: str, start_time: str, duration_minutes: int = 60, description: str = "", attendee_emails: list[str] = None) -> str:
         # 1. Validación de Identidad
         if not self._current_user or not self._current_user.calendar_id:
             logger.warning("CalendarAddTool invoked without calendar configured for user: %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
@@ -136,7 +139,6 @@ class CalendarAddTool(BaseTool):
 
         try:
             # 2. Parseo de Fechas (Asumiendo Input Local Madrid)
-            # El agente te pasará "2026-01-27 10:00". Nosotros le decimos a Python: "Esto es Madrid".
             try:
                 dt_naive = datetime.strptime(start_time, "%Y-%m-%d %H:%M")
                 dt_start = tz.localize(dt_naive)
@@ -149,29 +151,39 @@ class CalendarAddTool(BaseTool):
             event_body = {
                 'summary': summary,
                 'description': description,
-                'start': {
-                    'dateTime': dt_start.isoformat(),
-                    'timeZone': 'Europe/Madrid',
-                },
-                'end': {
-                    'dateTime': dt_end.isoformat(),
-                    'timeZone': 'Europe/Madrid',
-                },
+                'start': {'dateTime': dt_start.isoformat(), 'timeZone': 'Europe/Madrid'},
+                'end': {'dateTime': dt_end.isoformat(), 'timeZone': 'Europe/Madrid'},
+                'attendees': [{'email': email} for email in attendee_emails] if attendee_emails else [],
+                # --- FIX: Inyección de Identidad ---
+                'status': 'confirmed',
+                'iCalUID': str(uuid.uuid4()),
+                'organizer': {
+                    'email': calendar_id,
+                    'displayName': self._current_user.name
+                }
+                # ------------------------------------
             }
 
-            # 4. Llamada a la API
-            logger.info("CalendarAddTool: scheduling event for %s by user %s", summary, calendar_id)
             service = GoogleServiceFactory.build_service('calendar', 'v3')
-            event = service.events().insert(calendarId=calendar_id, body=event_body).execute()
-
-            # 5. Confirmación
-            html_link = event.get('htmlLink', '#')
-            logger.info("CalendarAddTool: event scheduled id=%s summary=%s", event.get('id'), summary)
-            return f"✅ Event Scheduled: '{summary}' on {start_time} ({duration_minutes} min).\nLink: {html_link}"
+            
+            # --- FIX: Usar .import() en lugar de .insert() ---
+            created_event = service.events().import_(
+                calendarId=calendar_id, 
+                body=event_body
+            ).execute()
+            # --------------------------------------------------
+            
+            event_url = created_event.get('htmlLink', 'No link available')
+            
+            return (
+                f"✅ Event '{summary}' created successfully.\n"
+                f"Link: {event_url}\n"
+                "⚠️ Note: Email notifications for attendees are NOT sent with this method."
+            )
 
         except Exception as e:
-            logger.exception("CalendarAddTool failed for user %s", calendar_id)
-            return f"❌ Error scheduling event: {str(e)}"
+            logger.exception("CalendarAddTool failed for user %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
+            return f"❌ Google API Error: {str(e)}"
 
 # --- INPUT SCHEMA PARA BORRADO ---
 class CalendarDeleteInput(BaseModel):

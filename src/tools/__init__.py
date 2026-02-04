@@ -5,6 +5,7 @@ from .memory_tool import RememberTool, RecallTool, ForgetTool
 from .profile_tool import SetCalendarIDTool
 from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool, CalendarUpdateTool
 from .governance_tool import UserGovernanceTool
+from .attendee_search_tool import AttendeeSearchTool
 # --- KITS DE HERRAMIENTAS ---
 MEMORY_KIT = {
     "save_memory": RememberTool(),
@@ -30,5 +31,6 @@ TOOL_MAPPING = {
     'calendar_core': CALENDAR_KIT,
     **MEMORY_KIT,
     **CALENDAR_KIT,
-    'user_governance': UserGovernanceTool()
+    'user_governance': UserGovernanceTool(),
+    'attendee_search': AttendeeSearchTool()
 }
