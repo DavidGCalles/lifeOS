@@ -216,3 +216,46 @@ class IdentityManager:
         
         logger.info(f"IdentityManager: No user found for name '{name}'")
         return None
+
+    @classmethod
+    async def get_user_by_email(cls, email: str) -> UserContext | None:
+        """
+        Search for a user by their calendar_id (email).
+        """
+        normalized_email = email.strip().lower()
+        logger.debug(f"IdentityManager: Looking up user by email '{normalized_email}'")
+
+        if cls._USE_FIRESTORE:
+            db = cls._get_firestore_client()
+            if db:
+                try:
+                    users_ref = db.collection('users').where('calendar_id', '==', normalized_email).limit(1)
+                    async for doc in users_ref.stream():
+                        data = doc.to_dict()
+                        role_str = data.get("role", "pending").lower()
+                        logger.info(f"IdentityManager: Found user by email: {normalized_email}")
+                        return UserContext(
+                            telegram_id=doc.id,
+                            name=data.get("name", "Unknown"),
+                            role=UserRole(role_str),
+                            description=data.get("description"),
+                            calendar_id=data.get("calendar_id")
+                        )
+                except Exception as e:
+                    logger.error(f"⚠️ Error searching Firestore by email: {e}")
+
+        # Fallback to local search
+        cls._load_local_users()
+        for tid, data in cls._users_db.items():
+            if data.get('calendar_id', '').lower() == normalized_email:
+                logger.info(f"IdentityManager: Found user by email (local): {normalized_email}")
+                return UserContext(
+                    telegram_id=tid,
+                    name=data.get("name"),
+                    role=UserRole(data.get("role", "guest").lower()),
+                    description=data.get("description"),
+                    calendar_id=data.get("calendar_id")
+                )
+        
+        logger.info(f"IdentityManager: No user found for email '{normalized_email}'")
+        return None
