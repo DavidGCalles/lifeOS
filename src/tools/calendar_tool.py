@@ -2,9 +2,14 @@ from datetime import datetime, timedelta
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from src.tools.google_base import GoogleServiceFactory
-from src.identity_manager import UserContext
+from src.identity_manager import UserContext, IdentityManager
+import asyncio
+from googleapiclient.errors import HttpError
 import pytz
 from src.logging_config import get_logger
+from src.utils.telegram_notifier import TelegramNotifier
+import uuid
+
 logger = get_logger(__name__) 
 
 class CalendarListInput(BaseModel):
@@ -109,6 +114,7 @@ class CalendarAddInput(BaseModel):
     start_time: str = Field(..., description="Start time in format 'YYYY-MM-DD HH:MM' (24h). Example: '2025-10-25 14:30'.")
     duration_minutes: int = Field(60, description="Duration in minutes. Default is 60.")
     description: str = Field("", description="Optional details or description for the event.")
+    attendee_emails: list[str] = Field(default_factory=list, description="Optional list of email addresses of attendees to invite.")
 
 # --- HERRAMIENTA DE ESCRITURA ---
 class CalendarAddTool(BaseTool):
@@ -125,53 +131,154 @@ class CalendarAddTool(BaseTool):
     def set_context(self, user: UserContext):
         self._current_user = user
 
-    def _run(self, summary: str, start_time: str, duration_minutes: int = 60, description: str = "") -> str:
-        # 1. Validación de Identidad
-        if not self._current_user or not self._current_user.calendar_id:
-            logger.warning("CalendarAddTool invoked without calendar configured for user: %s", getattr(self._current_user, 'telegram_id', 'Unknown'))
+    def _run(self, summary: str, start_time: str, duration_minutes: int = 60, description: str = "", attendee_emails: list[str] = None) -> str:
+        logger.debug(f"📋 START: {summary}")
+        
+        # 1. Owner resolution: try ToolContext accessor first, fallback to injected context
+        owner = None
+        # Preferred: context.get_current_user() if available on BaseTool
+        try:
+            ctx = getattr(self, 'context', None)
+            if ctx and hasattr(ctx, 'get_current_user'):
+                owner = ctx.get_current_user()
+                logger.debug(f"✓ Owner resolved from ToolContext: {getattr(owner, 'calendar_id', 'N/A')}")
+        except Exception as e:
+            logger.debug(f"⚠️ ToolContext not available: {e}")
+            owner = None
+
+        # Fallback to injected user via set_context
+        if not owner:
+            owner = self._current_user
+            logger.debug(f"✓ Owner resolved from injected context: {getattr(owner, 'calendar_id', 'N/A') if owner else 'None'}")
+
+        if not owner or not getattr(owner, 'calendar_id', None):
+            logger.error(f"❌ [CalendarAddTool] FAIL: No owner calendar_id. Owner={owner}, calendar_id={getattr(owner, 'calendar_id', None) if owner else 'N/A'}")
             return "❌ Error: User email not configured. Use 'SetCalendarIDTool' first."
 
-        calendar_id = self._current_user.calendar_id
+        calendar_id = owner.calendar_id
         tz = pytz.timezone('Europe/Madrid')
 
         try:
             # 2. Parseo de Fechas (Asumiendo Input Local Madrid)
-            # El agente te pasará "2026-01-27 10:00". Nosotros le decimos a Python: "Esto es Madrid".
             try:
                 dt_naive = datetime.strptime(start_time, "%Y-%m-%d %H:%M")
                 dt_start = tz.localize(dt_naive)
-            except ValueError:
+            except ValueError as ve:
+                logger.error(f"❌ Date parsing failed: {ve}")
                 return "❌ Error: Invalid date format. Please use 'YYYY-MM-DD HH:MM'."
 
             dt_end = dt_start + timedelta(minutes=duration_minutes)
-
-            # 3. Construcción del Payload
-            event_body = {
-                'summary': summary,
-                'description': description,
-                'start': {
-                    'dateTime': dt_start.isoformat(),
-                    'timeZone': 'Europe/Madrid',
-                },
-                'end': {
-                    'dateTime': dt_end.isoformat(),
-                    'timeZone': 'Europe/Madrid',
-                },
-            }
-
-            # 4. Llamada a la API
-            logger.info("CalendarAddTool: scheduling event for %s by user %s", summary, calendar_id)
             service = GoogleServiceFactory.build_service('calendar', 'v3')
-            event = service.events().insert(calendarId=calendar_id, body=event_body).execute()
 
-            # 5. Confirmación
-            html_link = event.get('htmlLink', '#')
-            logger.info("CalendarAddTool: event scheduled id=%s summary=%s", event.get('id'), summary)
-            return f"✅ Event Scheduled: '{summary}' on {start_time} ({duration_minutes} min).\nLink: {html_link}"
+            # Resolve attendees: emails or names -> calendar_id + UserContext mapping
+            resolved_attendees: list[str] = []
+            attendee_contexts: dict[str, UserContext] = {}  # Map email -> UserContext for Telegram notifications
+            unresolved: list[str] = []
+            
+            if attendee_emails:
+                logger.debug(f"👥 Resolving {len(attendee_emails)} attendees")
+                for a in attendee_emails:
+                    # simple email check
+                    if '@' in a and '.' in a:
+                        resolved_attendees.append(a)
+                        try:
+                            user = asyncio.run(IdentityManager.get_user_by_email(a))
+                            if user:
+                                attendee_contexts[a] = user
+                                logger.debug(f"  ✓ {a}")
+                            else:
+                                logger.debug(f"  ⚠️ {a} not found")
+                        except Exception:
+                            logger.debug(f"  ⚠️ Error resolving {a}")
+                    else:
+                        # try to resolve by name using IdentityManager (async)
+                        try:
+                            user = asyncio.run(IdentityManager.get_user_by_name(a))
+                            if user and user.calendar_id:
+                                resolved_attendees.append(user.calendar_id)
+                                attendee_contexts[user.calendar_id] = user
+                                logger.debug(f"  ✓ {a}")
+                            else:
+                                unresolved.append(a)
+                        except Exception:
+                            unresolved.append(a)
+            else:
+                logger.info(f"ℹ️ [CalendarAddTool] No attendees specified")
+
+            # Build the list of targets (owner + resolved attendees)
+            target_list = [calendar_id] + [e for e in resolved_attendees if e != calendar_id]
+
+            successes: list[str] = []
+            failures: list[str] = []
+
+            # Prepare a textual attendees block to include in description (fallback)
+            attendees_block = "\nExpected attendees:\n" + "\n".join([f"- {e}" for e in resolved_attendees]) if resolved_attendees else ""
+
+            # Iterate and insert into each target calendar. Do not include attendees field to avoid sending invites.
+            for target in target_list:
+                event_body = {
+                    'summary': summary,
+                    'description': (description or "") + attendees_block,
+                    'start': {'dateTime': dt_start.isoformat(), 'timeZone': 'Europe/Madrid'},
+                    'end': {'dateTime': dt_end.isoformat(), 'timeZone': 'Europe/Madrid'},
+                    'attendees': [],
+                    'status': 'confirmed',
+                    'iCalUID': str(uuid.uuid4()),
+                }
+
+                # Optionally set organizer metadata when writing to the owner's calendar
+                if target == calendar_id:
+                    try:
+                        event_body['organizer'] = {'email': calendar_id, 'displayName': owner.name}
+                    except Exception:
+                        pass
+
+                try:
+                    created = service.events().insert(calendarId=target, body=event_body).execute()
+                    successes.append(target)
+                    logger.debug(f"  ✓ {target}")
+                except HttpError as he:
+                    logger.debug(f"  ⚠️ {target}: HTTP {he.resp.status}")
+                    failures.append(target)
+                except Exception as e:
+                    logger.debug(f"  ⚠️ {target}: {type(e).__name__}")
+                    failures.append(target)
+
+            # Build summary
+            ok_list = ", ".join(successes) if successes else "None"
+            fail_list = ", ".join(failures) if failures else "None"
+
+            summary_msg = f"✅ Created in: [{ok_list}]\n⚠️ Not accessible: [{fail_list}]"
+            if unresolved:
+                summary_msg += f"\n❓ Could not resolve names: {', '.join(unresolved)}"
+
+            # Send Telegram notifications to all attendees (both successful and failed writes)
+            # They should know about the event even if the system couldn't write to their calendar
+            logger.info(f"📱 [CalendarAddTool] Sending Telegram notifications to {len(attendee_contexts)} attendees...")
+            start_time_display = dt_start.strftime("%a, %b %d at %H:%M")
+            notification_desc = description[:100] + "..." if description and len(description) > 100 else (description or "")
+
+            for email, attendee_user in attendee_contexts.items():
+                if attendee_user.telegram_id:
+                    try:
+                        asyncio.run(
+                            TelegramNotifier.send_event_notification(
+                                telegram_id=attendee_user.telegram_id,
+                                event_summary=summary,
+                                start_time=start_time_display,
+                                description=notification_desc,
+                                organizer_name=owner.name,
+                            )
+                        )
+                    except Exception:
+                        logger.debug(f"  ⚠️ Telegram notification failed")
+
+            logger.info(f"✅ Event created: {summary}")
+            return summary_msg
 
         except Exception as e:
-            logger.exception("CalendarAddTool failed for user %s", calendar_id)
-            return f"❌ Error scheduling event: {str(e)}"
+            logger.exception(f"❌ [CalendarAddTool] FATAL ERROR for user {getattr(owner, 'telegram_id', 'Unknown')}: {type(e).__name__}: {e}")
+            return f"❌ Google API Error: {str(e)}"
 
 # --- INPUT SCHEMA PARA BORRADO ---
 class CalendarDeleteInput(BaseModel):

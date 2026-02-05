@@ -1,0 +1,124 @@
+model_list:
+  # ==========================================================
+  # POOL 1: AGENTS WITH TOOLS (Gemini Only)
+  # Usamos primero Flash Lite (tiene 10 RPM) antes que Flash (5 RPM)
+  # para evitar cuellos de botella inmediatos.
+  # ==========================================================
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemini-2.5-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 10 
+      tpm: 250000
+
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 5    
+      tpm: 250000
+
+  - model_name: crewai-proxy
+    litellm_params:
+      model: gemini/gemini-3-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 5    
+      tpm: 250000
+
+  # ==========================================================
+  # POOL 2: ROUTER (No Tools)
+  # La familia Gemma tiene 30 RPM.
+  # Úsala para clasificar, pensar y chatear sin tools.
+  # ==========================================================
+  
+  # Gemma 27b: El más capaz de los router
+  - model_name: router-model
+    litellm_params:
+      model: gemini/gemma-3-27b-it
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000 
+
+  # Gemma 12b: Balanceado
+  - model_name: router-model
+    litellm_params:
+      model: gemini/gemma-3-12b-it
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+
+  # Gemma 4b: Muy rápido
+  - model_name: router-model
+    litellm_params:
+      model: gemini/gemma-3-4b-it
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+
+  # Gemma 1b: Ultraligero
+  - model_name: router-model
+    litellm_params:
+      model: gemini/gemma-3-1b-it
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 30
+      tpm: 15000
+  
+  #=========================================================
+  # POOL 3: VISION
+  #=========================================================
+  - model_name: vision-model
+    litellm_params:
+      model: gemini/gemini-2.5-flash-lite
+      api_key: os.environ/GEMINI_API_KEY
+  
+  - model_name: vision-model
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: vision-model
+    litellm_params:
+      model: gemini/gemini-3-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 5    
+      tpm: 250000
+
+  # ==========================================================
+  # POOL 4: AUDIO (Transcription & Normalization)
+  # ==========================================================
+  - model_name: audio-model
+    litellm_params:
+      model: gemini/gemini-3-flash-preview
+      api_key: os.environ/GEMINI_API_KEY
+      rpm: 1000 # Alto throughput para audio
+
+  # ==========================================================
+  # EMBEDDINGS
+  # ==========================================================
+  - model_name: text-embedding-004
+    litellm_params:
+      model: gemini/text-embedding-004
+      api_key: os.environ/GEMINI_API_KEY
+
+  # ==========================================================
+  # Local LLM (opcional)
+  # ==========================================================
+  - model_name: local-fallback
+    litellm_params:
+      # 'openai/' tells LiteLLM to use the generic OpenAI format
+      model: openai/local-model 
+      # Points to the host machine from inside the container
+      api_base: "http://host.docker.internal:1234/v1"
+      api_key: "lm-studio"
+      tpm: 1000000
+      rpm: 1000
+
+router_settings:
+  fallbacks:
+    - "crewai-proxy": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "gemini/gemini-3-flash-preview", "local-fallback"]
+    - "router-model": ["gemini/gemma-3-4b-it", "gemini/gemma-3-1b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-27b-it", "local-fallback"]
+    - "vision-model": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "gemini/gemini-3-flash-preview", "local-fallback"]
+    - "audio-model": ["gemini/gemini-3-flash-preview", "local-fallback"]
+  
+  allowed_fails: 1
+  cooldown_time: 1 

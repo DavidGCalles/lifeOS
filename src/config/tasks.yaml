@@ -34,6 +34,8 @@ router:
     - Output ONLY valid JSON.
     - START with { and END with }.
     - Do NOT output markdown blocks.
+    - If you are NOT confident about which agent fits, DEFAULT to JANE (the generalist).
+    - Only select KITCHEN when the message contains clear food/cooking/grocery evidence (words or images).
     
     Example:
     { "target_agent": "KITCHEN" }

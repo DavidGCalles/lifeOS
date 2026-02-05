@@ -10,13 +10,15 @@ from fastapi import FastAPI, Request, Response
 from telegram import Update, Message
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 from telegram.error import TelegramError
+import asyncio
 
 from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
 from src.utils.session_manager import SessionManager
 from src.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
-from src.logging_config import configure_logging
+from src.logging_config import configure_logging, install_grpc_noise_filter
+from src.social.shield import SocialShield
 
 # --- SENSORY IMPORTS ---
 from src.sensory import SensoryCortex
@@ -24,7 +26,6 @@ from src.sensory.drivers.visual_driver import VisualDriver
 from src.sensory.drivers.audio_driver import AudioDriver
 
 configure_logging()
-logging.getLogger("httpx").setLevel(logging.WARNING)
 
 TELEGRAM_TOKEN = load_credentials()
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
@@ -34,6 +35,36 @@ ADMIN_USER_ID = os.getenv('ADMIN_USER_ID')
 
 session_manager = SessionManager()
 orchestrator = CrewOrchestrator(session_manager=session_manager)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Context manager to run startup and shutdown logic."""
+    # This part runs when the application starts up
+    loop = asyncio.get_running_loop()
+    install_grpc_noise_filter(loop)
+    
+    # Initialize and start the Sensory Cortex in the background
+    cortex = SensoryCortex.get_instance()
+    # Initialize drivers
+    visual_driver = VisualDriver()
+    audio_driver = AudioDriver()
+    # Register drivers
+    cortex.register_driver(visual_driver, "visual")
+    cortex.register_driver(audio_driver, "audio")
+    
+    cortex_task = asyncio.create_task(cortex.run_forever())
+    
+    yield
+    
+    # This part runs when the application shuts down
+    cortex_task.cancel()
+    try:
+        await cortex_task
+    except asyncio.CancelledError:
+        logging.getLogger(__name__).info("Sensory Cortex shutdown complete.")
+
+app = FastAPI(lifespan=lifespan)
+
 
 # --- Lógica del Bot ---
 async def send_smart_response(update: Update, text: str) -> Message | None:
@@ -84,9 +115,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_chat or not update.effective_user: return
-    
+
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
+
+    # 1. SENSORY CORTEX PROCESSING (run before Social Shield to ensure payload/logging is set)
+    sensory_payload = await SensoryCortex().process(update)
+
+    # 0. SOCIAL SHIELD CHECK
+    engage, sanitized_input = await SocialShield.should_engage(update, context)
+    if not engage:
+        logging.info(f"🛡️ Shield: Bot remains silent in chat {chat_id}")
+        # Passive Context Ingestion: if this was a non-trigger message in a group, persist it (Firestore write only)
+        chat_type = update.effective_chat.type
+        if chat_type in ['group', 'supergroup']:
+            try:
+                log_content, input_type = SessionManager.build_log_content(sensory_payload, sanitized_input, update.message)
+                name = getattr(update.effective_user, 'first_name', None) or getattr(update.effective_user, 'username', 'Unknown')
+                await SessionManager.add_message(
+                    chat_id,
+                    {
+                        "role": "user",
+                        "content": log_content,
+                        "user_id": user_id,
+                        "name": name,
+                        "message_id": getattr(update.message, 'message_id', ''),
+                        "input_type": input_type
+                    }
+                )
+                logging.info(f"💾 Passive ingestion: saved non-trigger message for chat {chat_id}")
+            except Exception as e:
+                logging.warning(f"⚠️ Passive ingestion failed for chat {chat_id}: {e}")
+        return
 
     # 1. Identidad
     current_user = await IdentityManager.get_user(user_id)
@@ -129,13 +189,6 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return 
     # --- FIN PROTOCOLO INICIAL ---
 
-    logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
-    inject_runtime_context(current_user)
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
-    # 2. SENSORY CORTEX PROCESSING
-    sensory_payload = await SensoryCortex().process(update)
-    
     user_input: str | list[dict[str, Any]] | None = None
     is_multimodal = False
     input_type = "text" # Default to text
@@ -145,9 +198,16 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         is_multimodal = True
         input_type = sensory_payload.get("metadata", {}).get("input_type", "multimodal")
     elif update.message and update.message.text:
-        user_input = update.message.text
+        # Use sanitized text (handles removed) if Shield provided one for mention-activations
+        user_input = sanitized_input if sanitized_input is not None else update.message.text
+        if sanitized_input is not None and isinstance(user_input, str) and user_input != (update.message.text or ""):
+            logging.info(f"🔎 Sanitized input for routing: '{user_input}' (bot handle removed)")
     else:
         return
+
+    logging.info("👤 Usuario: %s (%s)", current_user.name, current_user.role)
+    inject_runtime_context(current_user)
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     # 3. ENRUTAMIENTO Y EJECUCIÓN
     try:
@@ -165,26 +225,24 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             target_agent = await orchestrator.route_request(user_input, current_user)
         
         # LOGGING (SANITIZED)
-        log_content = user_input
-        if is_multimodal and isinstance(user_input, list):
-            text_part = next((str(x["text"]) for x in user_input if x.get("type") == "text"), "")
-            # Aquí puedes usar el input_type para un log más preciso
-            log_content = f"[{input_type.upper()} FILE] {text_part}"
-
+        # Use shared builder to produce consistent log content and input_type
+        log_content, input_type = SessionManager.build_log_content(sensory_payload, sanitized_input, update.message)
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         if update.message:
             await SessionManager.add_message(
                 chat_id,
                 {
-                    "role": current_user.role.value, 
-                    "content": log_content, 
-                    "user_id": user_id, 
-                    "name": current_user.name, 
+                    "role": current_user.role.value,
+                    "content": log_content,
+                    "user_id": user_id,
+                    "name": current_user.name,
                     "message_id": update.message.message_id,
-                    "input_type": input_type 
+                    "input_type": input_type
                 }
             )
 
         # EJECUCIÓN
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         respuesta = await orchestrator.execute_request(
             user_message=user_input, 
             target_agent_key=str(target_agent), 
@@ -194,9 +252,6 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         respuesta_str = str(respuesta)
         
-        # --- ENVÍO SEGURO (FIXED) ---
-        # Usamos send_smart_response en lugar de send_message directo
-        # Y capturamos sent_msg para el log posterior
         sent_msg = await send_smart_response(update, f"🤖 *[{target_agent}]*\n\n{respuesta_str}")
 
         if sent_msg:
@@ -225,6 +280,40 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # --- 🔇 SILENCIADOR DE RUIDO gRPC ---
+    import asyncio
+    
+    # Obtenemos el loop actual y su manejador por defecto (si existe)
+    loop = asyncio.get_running_loop()
+    default_handler = loop.get_exception_handler()
+
+    def custom_exception_handler(loop, context):
+        # 1. Análisis de la Excepción (Si existe)
+        if "exception" in context:
+            exc = context["exception"]
+            # Captura BlockingIOError directo o OSError con errno 11 (EAGAIN)
+            if isinstance(exc, (BlockingIOError, InterruptedError)):
+                return
+            if isinstance(exc, OSError) and exc.errno == 11:
+                return
+        
+        # 2. Análisis del Mensaje (Red de seguridad por si no hay objeto exception)
+        # A veces gRPC/Asyncio pasan el error como texto en el mensaje
+        msg = context.get("message", "")
+        if "Resource temporarily unavailable" in msg or "BlockingIOError" in msg:
+            return
+            
+        # Para todo lo demás, delegar
+        if default_handler:
+            default_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+
+    # Instalamos el filtro en el loop activo
+    loop.set_exception_handler(custom_exception_handler)
+    logging.info("✅ Filtro de ruido gRPC (Errno 11) instalado en asyncio loop.")
+    # ------------------------------------
+
     logging.info(f"🚀 Iniciando LifeOS ({RUN_MODE})...")
     
     cortex = SensoryCortex()
@@ -275,4 +364,4 @@ async def telegram_webhook(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host="0.0.0.0", port=PORT, loop="asyncio")
