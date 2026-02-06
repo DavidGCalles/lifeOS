@@ -16,7 +16,8 @@ class GoogleServiceFactory:
     # Default scopes needed for LifeOS (Calendar & Drive usually go together)
     DEFAULT_SCOPES = [
         'https://www.googleapis.com/auth/calendar',
-        'https://www.googleapis.com/auth/calendar.events'
+        'https://www.googleapis.com/auth/calendar.events',
+        'https://www.googleapis.com/auth/drive.readonly'
     ]
     _services: dict[str, Resource] = {}
     _creds: service_account.Credentials | None = None

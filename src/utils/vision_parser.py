@@ -89,34 +89,74 @@ def render_document_to_images(
     return images
 
 
-def vision_extract_text(images: List[str], model: str = "crewai-proxy") -> str:
+async def vision_extract_text(images: List[str], model: str = "crewai-proxy") -> str:
     """
-    Perform LLM-based visual analysis on images to extract structured text.
-    
-    Converts images to Markdown format with preserved tables, bold text, and headers.
-    Uses LiteLLMRouter for consistent LLM orchestration.
-    
-    Args:
-        images: List of Base64-encoded image strings
-        model: LLM model identifier (default: crewai-proxy)
-    
-    Returns:
-        Extracted text in Markdown format with preserved structure.
-    
-    Raises:
-        ValueError: If images list is empty
-        RuntimeError: If LLM call fails
-    
-    Example:
-        >>> images = render_document_to_images(pdf_bytes)
-        >>> markdown_text = vision_extract_text(images)
-        >>> print(markdown_text)
+    Perform LLM-based visual analysis on images to extract structured text (Async).
     """
     if not images:
         raise ValueError("images list cannot be empty")
     
-    # System prompt to ensure Markdown-formatted output
-    system_prompt = """You are a document analysis expert. Your task is to carefully analyze the provided image(s) and extract all content in Markdown format.
+    system_prompt = _get_vision_system_prompt()
+    content = _prepare_vision_content(images)
+    
+    try:
+        router = LiteLLMRouter()
+        response = await router.acompletion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content}
+            ],
+            temperature=0.2,
+            max_tokens=4096
+        )
+        
+        extracted_text = response.choices[0].message.content
+        logger.info(f"Successfully extracted text from {len(images)} image(s) using model '{model}' (Async)")
+        return extracted_text or ""
+        
+    except Exception as e:
+        logger.error(f"LLM vision call failed: {str(e)}")
+        raise RuntimeError(f"Failed to extract text from images: {str(e)}") from e
+
+
+def vision_extract_text_sync(images: List[str], model: str = "crewai-proxy") -> str:
+    """
+    Perform LLM-based visual analysis on images to extract structured text (Sync).
+    Used by tools that are not yet async-compatible.
+    """
+    if not images:
+        raise ValueError("images list cannot be empty")
+    
+    system_prompt = _get_vision_system_prompt()
+    content = _prepare_vision_content(images)
+    
+    try:
+        router = LiteLLMRouter()
+        # Note: LiteLLMRouter should provide a sync completion if needed, 
+        # or we use litellm.completion directly if it's initialized.
+        import litellm
+        response = litellm.completion(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": content}
+            ],
+            temperature=0.2,
+            max_tokens=4096
+        )
+        
+        extracted_text = response.choices[0].message.content
+        logger.info(f"Successfully extracted text from {len(images)} image(s) using model '{model}' (Sync)")
+        return extracted_text or ""
+        
+    except Exception as e:
+        logger.error(f"LLM vision sync call failed: {str(e)}")
+        raise RuntimeError(f"Failed to extract text from images (sync): {str(e)}") from e
+
+
+def _get_vision_system_prompt() -> str:
+    return """You are a document analysis expert. Your task is to carefully analyze the provided image(s) and extract all content in Markdown format.
 
 IMPORTANT FORMATTING RULES:
 - Preserve all tables using Markdown table syntax (| column1 | column2 |)
@@ -129,15 +169,14 @@ IMPORTANT FORMATTING RULES:
 
 Output ONLY the Markdown content. Do not include introductions or explanations."""
 
-    # Prepare image content for vision-capable LLM
+
+def _prepare_vision_content(images: List[str]) -> List[dict]:
     content = [
         {
             "type": "text",
             "text": "Please analyze this document image and extract all content in Markdown format, preserving tables, bold text, headers, and structure."
         }
     ]
-    
-    # Add each image as a vision message
     for image_data in images:
         content.append({
             "type": "image_url",
@@ -145,30 +184,4 @@ Output ONLY the Markdown content. Do not include introductions or explanations."
                 "url": f"data:image/jpeg;base64,{image_data}"
             }
         })
-    
-    try:
-        # Use LiteLLMRouter for consistent orchestration
-        router = LiteLLMRouter()
-        response = router.completion(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": content
-                }
-            ],
-            temperature=0.2,  # Lower temperature for consistent, accurate extraction
-            max_tokens=4096
-        )
-        
-        extracted_text = response.choices[0].message.content
-        logger.info(f"Successfully extracted text from {len(images)} image(s) using model '{model}'")
-        return extracted_text
-        
-    except Exception as e:
-        logger.error(f"LLM vision call failed: {str(e)}")
-        raise RuntimeError(f"Failed to extract text from images: {str(e)}") from e
+    return content
