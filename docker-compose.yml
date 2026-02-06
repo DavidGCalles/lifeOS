@@ -8,10 +8,9 @@ services:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-      # Le decimos a tu app dónde está el cerebro ahora
       - OPENAI_API_KEY=sk-fake-key-bypass
       - GOOGLE_APPLICATION_CREDENTIALS=/app/src/config/credentials.json
-      - LOCAL_LLM_URL=http://host.docker.internal:1234/v1 
+      - EMBEDDING_API_BASE=http://lifeos_embeddings:7997
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -45,3 +44,19 @@ services:
       # - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
       - QDRANT__TELEMETRY_DISABLED=true
     restart: always
+
+  lifeos_embeddings:
+    image: michaelf34/infinity:latest-cpu
+    container_name: lifeos_embeddings
+    # ESTO ES LO QUE FALTA EN LA VERSIÓN 0.0.77
+    command: v2 --model-id intfloat/multilingual-e5-small --engine torch --port 7997
+    ports:
+      - "7997:7997"
+    environment:
+      - MODEL_ID=intfloat/multilingual-e5-small
+      - ENGINE=torch
+      - OPTIM_LEVEL=0
+      - PORT=7997
+    volumes:
+      - ./data/infinity_models:/models
+    restart: unless-stopped

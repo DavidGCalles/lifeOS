@@ -1,12 +1,17 @@
 import os
-import httpx
 import logging
+from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient, models
 from src.schemas.memory import EpisodicMemoryItem, EpisodicMemoryMetadata
 
 from src.logging_config import configure_logging
 configure_logging(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# --- Configuration ---
+# 384 for intfloat/multilingual-e5-small (local)
+# 768 for text-embedding-004 (Gemini)
+EMBEDDING_DIMENSION = 384
 
 class VectorMemoryManager:
     """
@@ -55,7 +60,7 @@ class VectorMemoryManager:
             await self._client.create_collection(
                 collection_name=self._collection_name,
                 vectors_config=models.VectorParams(
-                    size=768, 
+                    size=EMBEDDING_DIMENSION, 
                     distance=models.Distance.COSINE
                 ),
             )
@@ -82,30 +87,26 @@ class VectorMemoryManager:
     async def _get_embedding(self, text: str) -> list[float]:
         """
         Generates an embedding for the given text using the LiteLLM proxy.
+        Uses the 'text-embedding' model configured in LiteLLM which routes to the proper provider.
         """
         litellm_url = os.getenv("LITELLM_URL", "http://localhost:4000")
         if not litellm_url.startswith("http"):
             litellm_url = f"http://{litellm_url}"
+            
+        client = AsyncOpenAI(
+            base_url=f"{litellm_url.rstrip('/')}/v1",
+            api_key="sk-fake-key"
+        )
         
-        embedding_url = f"{litellm_url.rstrip('/')}/v1/embeddings"
-        
-        headers = {"Content-Type": "application/json"}
-        data = {
-            "model": "text-embedding-004",
-            "input": [text]
-        }
-        
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(embedding_url, headers=headers, json=data, timeout=30)
-                response.raise_for_status()
-                embedding_data = response.json().get("data")
-                if embedding_data and len(embedding_data) > 0:
-                    return embedding_data[0].get("embedding")
-                raise ValueError("Invalid embedding response format from LiteLLM")
-            except httpx.RequestError as e:
-                logger.error(f"Error getting embedding from LiteLLM proxy at {embedding_url}: {e}", exc_info=True)
-                raise
+        try:
+            response = await client.embeddings.create(
+                model="text-embedding",
+                input=[text]
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"Error getting embedding from LiteLLM proxy: {e}", exc_info=True)
+            raise
 
     async def add_memory(self, item: EpisodicMemoryItem) -> str:
         """
