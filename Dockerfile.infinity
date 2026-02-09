@@ -11,5 +11,5 @@ RUN echo "from infinity_emb import EngineArgs, AsyncEmbeddingEngine\nimport asyn
 # Cloud Run inyecta el tráfico por el puerto 8080 por defecto
 EXPOSE 8080
 
-# Comando de inicio: ya no necesita descargar nada, solo cargar desde caché local
-ENTRYPOINT ["infinity_emb", "v2", "--model-id", "intfloat/multilingual-e5-small", "--port", "8080", "--engine", "torch"]
+ENTRYPOINT ["infinity_emb"]
+CMD ["--model-id", "intfloat/multilingual-e5-small", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
