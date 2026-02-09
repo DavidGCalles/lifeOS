@@ -3,7 +3,7 @@ FROM michaelf34/infinity:latest-cpu
 
 # Seteamos el modelo como variable de entorno
 ENV MODEL_ID=intfloat/multilingual-e5-small
-ENV HF_HOME=/app/model_cache
+#ENV HF_HOME=/app/model_cache
 ENV HF_HUB_OFFLINE=1
 
 # Paso de "Bakeo": Descargamos el modelo durante el build
@@ -14,4 +14,4 @@ RUN HF_HUB_OFFLINE=0 echo "from infinity_emb import EngineArgs, AsyncEmbeddingEn
 EXPOSE 8080
 
 ENTRYPOINT ["infinity_emb"]
-CMD ["--model-id", "intfloat/multilingual-e5-small", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
+CMD ["--model-id", "intfloat/multilingual-e5-small", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch", "--offline"]
