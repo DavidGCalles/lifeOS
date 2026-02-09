@@ -29,6 +29,20 @@ steps:
     id: 'build-litellm'
     waitFor: ['-'] # Empieza inmediatamente (paralelo al backend)
 
+  # 2.b Build Embedding Service (infinity)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'Dockerfile.infinity' # Usa el Dockerfile específico
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/lifeos-embeddings:latest'
+      - '.'
+    id: 'build-embeddings'
+    waitFor: ['-'] # Empieza inmediatamente (paralelo a los demás)
+
   # ==========================================
   # PUSH PHASE
   # ==========================================
@@ -44,6 +58,12 @@ steps:
     args: ['push', 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA']
     id: 'push-litellm'
     waitFor: ['build-litellm']
+
+  # 4.b Push Embeddings
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA']
+    id: 'push-embeddings'
+    waitFor: ['build-embeddings']
 
   # ==========================================
   # DEPLOY PHASE
@@ -75,17 +95,15 @@ steps:
       - 'deploy'
       - 'lifeos-embeddings'
       - '--image'
-      - 'michaelf34/infinity:latest'
+      - 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA'
       - '--region'
       - '${_REGION}'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
-      - "--set-env-vars=MODEL_ID=intfloat/multilingual-e5-small"
       - "--memory=2Gi"
-      - "--args=v2,--model-id,intfloat/multilingual-e5-small,--port,8080"
     id: 'deploy-embeddings'
-    waitFor: ['deploy-litellm']
+    waitFor: ['push-embeddings']
 
   # 6. Deploy Backend Service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -128,6 +146,8 @@ images:
   - 'gcr.io/$PROJECT_ID/lifeos-backend:latest'
   - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/lifeos-litellm:latest'
+  - 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/lifeos-embeddings:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -46,17 +46,12 @@ services:
     restart: always
 
   lifeos_embeddings:
-    image: michaelf34/infinity:latest-cpu
+    build:
+      context: .
+      dockerfile: Dockerfile.infinity
     container_name: lifeos_embeddings
-    # ESTO ES LO QUE FALTA EN LA VERSIÓN 0.0.77
-    command: v2 --model-id intfloat/multilingual-e5-small --engine torch --port 7997
     ports:
-      - "7997:7997"
-    environment:
-      - MODEL_ID=intfloat/multilingual-e5-small
-      - ENGINE=torch
-      - OPTIM_LEVEL=0
-      - PORT=7997
+      - "7997:8080"
     volumes:
       - ./data/infinity_models:/models
     restart: unless-stopped
