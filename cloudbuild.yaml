@@ -101,7 +101,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
-      - "--memory=2Gi"
+      - "--memory=4Gi"
       - '--timeout=600' 
       - '--cpu=2'
       - '--cpu-boost'  
