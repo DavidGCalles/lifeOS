@@ -3,10 +3,12 @@ FROM michaelf34/infinity:latest-cpu
 
 # Seteamos el modelo como variable de entorno
 ENV MODEL_ID=intfloat/multilingual-e5-small
+ENV HF_HOME=/app/model_cache
+ENV HF_HUB_OFFLINE=1
 
 # Paso de "Bakeo": Descargamos el modelo durante el build
 # Esto ejecuta el motor, descarga los pesos y luego se cierra
-RUN echo "from infinity_emb import EngineArgs, AsyncEmbeddingEngine\nimport asyncio\nasync def download():\n    engine = AsyncEmbeddingEngine.from_args(EngineArgs(model_name_or_path='intfloat/multilingual-e5-small', engine='torch'))\n    await engine.astart()\n    await engine.astop()\nasyncio.run(download())" > download_model.py && python download_model.py
+RUN HF_HUB_OFFLINE=0 echo "from infinity_emb import EngineArgs, AsyncEmbeddingEngine\nimport asyncio\nasync def download():\n    engine = AsyncEmbeddingEngine.from_args(EngineArgs(model_name_or_path='intfloat/multilingual-e5-small', engine='torch'))\n    await engine.astart()\n    await engine.astop()\nasyncio.run(download())" > download_model.py && python download_model.py
 
 # Cloud Run inyecta el tráfico por el puerto 8080 por defecto
 EXPOSE 8080
