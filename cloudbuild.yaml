@@ -102,6 +102,9 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - "--memory=2Gi"
+      - '--timeout=600' 
+      - '--cpu=2'
+      - '--cpu-boost'  
     id: 'deploy-embeddings'
     waitFor: ['push-embeddings']
 
