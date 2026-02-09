@@ -81,7 +81,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
-      - "--set-env-vars=MODEL_ID=intfloat/multilingual-e5-large,PORT=7997"
+      - "--set-env-vars=MODEL_ID=intfloat/multilingual-e5-large"
     id: 'deploy-embeddings'
     waitFor: ['deploy-litellm']
 
