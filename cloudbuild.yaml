@@ -1,139 +1,109 @@
 steps:
+  # 0. Descargar modelo desde TU bucket
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args: ['-m', 'cp', '-r', 'gs://lifeos-assets-319986340006/models/e5-small', '.']
+    id: 'fetch-model'
+
   # ==========================================
   # BUILD PHASE (Paralelo)
   # ==========================================
-
-  # 1. Build Backend (LifeOS)
   - name: 'gcr.io/cloud-builders/docker'
-    args: 
-      - 'build'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lifeos-backend:latest'
-      - '.'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA', '-t', 'gcr.io/$PROJECT_ID/lifeos-backend:latest', '.']
     id: 'build-backend'
-    waitFor: ['-'] # Empieza inmediatamente
+    waitFor: ['-']
 
-  # 2. Build LiteLLM Proxy
   - name: 'gcr.io/cloud-builders/docker'
-    args: 
-      - 'build'
-      - '-f'
-      - 'Dockerfile.litellm' # Usa el Dockerfile específico
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lifeos-litellm:latest'
-      - '.'
+    args: ['build', '-f', 'Dockerfile.litellm', '-t', 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA', '-t', 'gcr.io/$PROJECT_ID/lifeos-litellm:latest', '.']
     id: 'build-litellm'
-    waitFor: ['-'] # Empieza inmediatamente (paralelo al backend)
+    waitFor: ['-']
 
-  # 2.b Build Embedding Service (infinity)
   - name: 'gcr.io/cloud-builders/docker'
-    args: 
-      - 'build'
-      - '-f'
-      - 'Dockerfile.infinity' # Usa el Dockerfile específico
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA'
-      - '-t'
-      - 'gcr.io/$PROJECT_ID/lifeos-embeddings:latest'
-      - '.'
+    args: ['build', '-f', 'Dockerfile.infinity', '-t', 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA', '-t', 'gcr.io/$PROJECT_ID/lifeos-embeddings:latest', '.']
     id: 'build-embeddings'
-    waitFor: ['-'] # Empieza inmediatamente (paralelo a los demás)
+    waitFor: ['fetch-model']
 
   # ==========================================
   # PUSH PHASE
   # ==========================================
-  
-  # 3. Push Backend
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA']
     id: 'push-backend'
     waitFor: ['build-backend']
 
-  # 4. Push LiteLLM
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA']
     id: 'push-litellm'
     waitFor: ['build-litellm']
 
-  # 4.b Push Embeddings
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA']
     id: 'push-embeddings'
     waitFor: ['build-embeddings']
 
   # ==========================================
-  # DEPLOY PHASE
+  # DEPLOY PHASE (Legible)
   # ==========================================
 
-  # 5. Deploy LiteLLM Service
+  # 5. Deploy LiteLLM
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'lifeos-litellm' # Nombre del servicio
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
-      - '--region'
-      - '${_REGION}'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated' # Cuidado aquí 
+      - 'lifeos-litellm'
+      - '--image=gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
     id: 'deploy-litellm'
     waitFor: ['push-litellm']
 
-  # 5.b Deploy Embedding Service (infinity) - standalone service
+  # 5.b Deploy Embeddings
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
       - 'lifeos-embeddings'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA'
-      - '--region'
-      - '${_REGION}'
-      - '--platform'
-      - 'managed'
+      - '--image=gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
       - '--allow-unauthenticated'
-      - "--memory=4Gi"
-      - '--timeout=600' 
+      - '--memory=4Gi'
       - '--cpu=2'
-      - '--cpu-boost'  
+      - '--cpu-boost'
+      - '--timeout=600'
     id: 'deploy-embeddings'
     waitFor: ['push-embeddings']
 
-  # 6. Deploy Backend Service
+  # 6. Deploy Backend (El "Gordo")
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'lifeos-backend' # Nombre del servicio
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
-      - '--region'
-      - '${_REGION}'
-      - '--platform'
-      - 'managed'
+      - 'lifeos-backend'
+      - '--image=gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--set-env-vars=RUN_MODE=WEBHOOK'
-      - '--set-env-vars=WEBHOOK_URL=${_WEBHOOK_URL}'
-      - '--set-env-vars=LITELLM_URL=${_LITELLM_URL}'
-      - '--set-env-vars=CREWAI_TRACING_ENABLED=false'
-      - '--set-env-vars=USE_FIRESTORE=TRUE'
-      - '--set-env-vars=FIRESTORE_DB_NAME=lifeos'
-      - '--set-env-vars=QDRANT_HOST=${_QDRANT_HOST}'
-      - '--set-env-vars=EMBEDDING_API_BASE=${_EMBEDDING_API_BASE}'
-      - '--set-secrets=TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest'
-      - '--set-secrets=QDRANT_API_KEY=QDRANT_API_KEY:latest'
-      - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
-      - '--set-secrets=ADMIN_USER_ID=ADMIN_USER_ID:latest'
+      - '--set-env-vars'
+      - >-
+          RUN_MODE=WEBHOOK,
+          WEBHOOK_URL=${_WEBHOOK_URL},
+          LITELLM_URL=${_LITELLM_URL},
+          CREWAI_TRACING_ENABLED=false,
+          USE_FIRESTORE=TRUE,
+          FIRESTORE_DB_NAME=lifeos,
+          QDRANT_HOST=${_QDRANT_HOST},
+          EMBEDDING_API_BASE=${_EMBEDDING_API_BASE}
+      - '--set-secrets'
+      - >-
+          TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest,
+          QDRANT_API_KEY=QDRANT_API_KEY:latest,
+          GEMINI_API_KEY=GEMINI_API_KEY:latest,
+          ADMIN_USER_ID=ADMIN_USER_ID:latest
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
@@ -142,15 +112,7 @@ substitutions:
     _WEBHOOK_URL: 'https://lifeos-backend-319986340006.europe-west1.run.app'
     _LITELLM_URL: 'https://lifeos-litellm-319986340006.europe-west1.run.app'
     _QDRANT_HOST: 'https://8dfa97fa-d667-4dc6-9a1a-5d5eb96ac59b.europe-west3-0.gcp.cloud.qdrant.io'
-    _EMBEDDING_API_BASE: 'https://lifeos-embeddings-MOCK.europe-west1.run.app'
-
-images:
-  - 'gcr.io/$PROJECT_ID/lifeos-backend:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/lifeos-backend:latest'
-  - 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/lifeos-litellm:latest'
-  - 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA'
-  - 'gcr.io/$PROJECT_ID/lifeos-embeddings:latest'
+    _EMBEDDING_API_BASE: 'https://lifeos-embeddings-319986340006.europe-west1.run.app'
 
 options:
   logging: CLOUD_LOGGING_ONLY

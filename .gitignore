@@ -8,7 +8,7 @@ litellm_config.prod.yaml
 src/config/users.json
 src/config/credentials.json
 !src/  # Excepción: no ignorar JSONs que sean parte del código fuente real
-model_cache/
+models/
 
 # --- 🐍 PYTHON BASURA (Compilados y caché) ---
 src/__pycache__/
