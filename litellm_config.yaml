@@ -95,14 +95,11 @@ model_list:
   # ==========================================================
   # POOL 5: EMBEDDINGS
   # ==========================================================
-  - model_name: text-embedding
-    litellm_params:
-      model: gemini/text-embedding-004
-      api_key: os.environ/GEMINI_API_KEY
 
   - model_name: text-embedding
     litellm_params:
       model: intfloat/multilingual-e5-small
+      custom_llm_provider: openai
       api_base: os.environ/EMBEDDING_API_BASE
       api_key: "infinity-service"
       rpm: 1000
