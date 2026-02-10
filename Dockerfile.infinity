@@ -8,8 +8,7 @@ ENV HF_HUB_OFFLINE=1
 WORKDIR /app
 
 # Copiamos la carpeta que descargamos (en local o desde GCS en Cloud Build)
-# Asumiendo que has renombrado tu carpeta local a 'e5-small'
-COPY ./e5-small /app/model
+COPY ./models/e5-small /app/models/e5-small
 
 # Cloud Run inyecta el tráfico por el puerto 8080 por defecto
 EXPOSE 8080
