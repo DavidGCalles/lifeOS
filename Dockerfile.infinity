@@ -1,53 +1,24 @@
 FROM michaelf34/infinity:latest-cpu
 
-# 1. Variables de entorno CRÍTICAS
+# 1. Variables de entorno para modo offline estricto
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
-# Forzamos la home de cache a /tmp por si intenta escribir algo (Cloud Run es read-only excepto /tmp)
 ENV HF_HOME=/tmp/huggingface
-ENV SENTENCE_TRANSFORMERS_HOME=/tmp/sentence_transformers
 
 WORKDIR /app
 
-# 2. Copiamos a una ruta ROOT neutral (fuera de /app)
-# Esto evita conflictos con el WORKDIR o volúmenes ocultos
+# 2. Copiamos el modelo a una ruta segura y neutral
 COPY ./models/e5-small /data/model
 
-# 3. Permisos Totales
+# 3. FIX CRÍTICO: Borramos modules.json para evitar que infinity intente conectarse a internet
+# Esto fuerza el modo "arquitectura básica" (BERT puro) que sí funciona offline.
+RUN rm -f /data/model/modules.json
+
+# 4. Permisos de lectura para todos (para evitar líos de usuarios)
 RUN chmod -R 777 /data/model
-
-# 4. INSTALAMOS SENTENCE-TRANSFORMERS PARA EL CHECK
-# Infinity usa esto internamente. Si esto falla aquí, fallará en producción.
-RUN pip install --no-cache-dir sentence-transformers
-
-# 5. VERIFICACIÓN ESTRICTA (El "Detector de Mentiras" v2)
-# Ahora usamos SentenceTransformer, que es lo que realmente usa Infinity.
-RUN printf "import sys\n\
-from sentence_transformers import SentenceTransformer\n\
-path='/data/model'\n\
-print(f'🐢 Validating for SentenceTransformer from {path}...')\n\
-try:\n\
-    # Esto validará modules.json y la estructura completa\n\
-    model = SentenceTransformer(path, local_files_only=True)\n\
-    print('✅ SentenceTransformer loaded successfully!')\n\
-except Exception as e:\n\
-    print(f'❌ CRASH: The model folder structure is invalid for SentenceTransformers!\\nError: {e}')\n\
-    sys.exit(1)\n" > check_real.py && \
-    python3 check_real.py
-
-# 6. SCRIPT DE ARRANQUE (Runtime Debug)
-# Esto se ejecutará en Cloud Run. Si falla, veremos el `ls` antes de morir.
-RUN printf "#!/bin/bash\n\
-echo '=== CLOUD RUN DIAGNOSTICS ==='\n\
-echo 'User: \$(whoami)'\n\
-echo 'Ls /data/model:'\n\
-ls -la /data/model\n\
-echo '============================='\n\
-exec infinity_emb \"\$@\"\n" > /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
-ENTRYPOINT ["/entrypoint.sh"]
-
-# Apuntamos a la nueva ruta /data/model
+# 5. Arrancamos directo
+ENTRYPOINT ["infinity_emb"]
 CMD ["--model-id", "/data/model", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
