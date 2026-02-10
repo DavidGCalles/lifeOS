@@ -7,6 +7,17 @@ steps:
       - |
         mkdir -p models && gsutil -m cp -r gs://lifeos-assets/models/e5-small models/
     id: 'fetch-model'
+  
+  - name: 'ubuntu'
+    entrypoint: 'bash'
+    args: 
+      - '-c'
+      - |
+        echo "=== CONTENIDO DESCARGADO ==="
+        ls -R models/
+        echo "============================"
+    id: 'debug-fs'
+    waitFor: ['fetch-model']
 
   # ==========================================
   # BUILD PHASE (Paralelo)

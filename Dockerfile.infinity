@@ -1,16 +1,20 @@
 FROM michaelf34/infinity:latest-cpu
 
-# Usamos la ruta completa y real
-ENV MODEL_ID=/app/models/e5-small
 ENV HF_HUB_OFFLINE=1
+ENV MODEL_ID=/app/model_data 
+# ^ Cambiamos el nombre para evitar conflictos mentales
 
 WORKDIR /app
 
-# Esto ahora funcionará porque fetch-model habrá creado ./models/e5-small
-COPY ./models/e5-small /app/models/e5-small
+# 1. Copiamos con un nombre distinto para asegurar que no hay anidamiento oculto.
+# 2. --chown=1000:1000 es CRUCIAL si la imagen base usa un usuario no-root.
+#    (El usuario por defecto en muchas imágenes de python/ai es 1000).
+COPY --chown=1000:1000 ./models/e5-small /app/model_data
+
+# DEBUG DENTRO DEL BUILD (Para que veas el log si falla)
+RUN ls -la /app/model_data && echo "Config file is:" && ls /app/model_data/config.json
 
 EXPOSE 8080
 
 ENTRYPOINT ["infinity_emb"]
-# CMD actualizado con la ruta interna correcta
-CMD ["--model-id", "/app/models/e5-small", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch", "--offline"]
+CMD ["--model-id", "/app/model_data", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
