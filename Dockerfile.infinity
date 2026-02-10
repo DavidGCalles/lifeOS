@@ -15,8 +15,24 @@ COPY ./models/e5-small /app/model_data
 # Esto soluciona el "LocalEntryNotFoundError" provocado por "Permission Denied".
 RUN chmod -R 777 /app/model_data
 
+# 4. VERIFICACIÓN DE INTEGRIDAD (El "Detector de Mentiras")
+# Esto obliga a transformers a cargar el modelo AHORA.
+# Si falta un archivo o la config está mal, el build fallará aquí con el error real.
+RUN pip install transformers sentencepiece protobuf && \
+    python3 -c "from transformers import AutoTokenizer, AutoModel; \
+    path='/app/model_data'; \
+    print(f'🐢 Testing load from {path}...'); \
+    try: \
+      tok = AutoTokenizer.from_pretrained(path); \
+      print('✅ Tokenizer loaded'); \
+      model = AutoModel.from_pretrained(path); \
+      print('✅ Model loaded'); \
+    except Exception as e: \
+      print(f'❌ CRASH: {e}'); \
+      exit(1)"
+
 # 4. Debugging visual (Opcional, para ver en logs si arranca)
-RUN ls -la /app/model_data
+#RUN ls -la /app/model_data
 
 EXPOSE 8080
 
