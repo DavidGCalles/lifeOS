@@ -1,8 +1,12 @@
 steps:
-  # 0. Descargar modelo desde TU bucket
+# 0. Descargar modelo asegurando que se crea la ruta models/
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['-m', 'cp', '-r', 'gs://lifeos-assets/models/e5-small', './models/']
-    id: 'fetch-model'
+    entrypoint: 'bash'
+    args: 
+      - '-c'
+      - |
+        mkdir -p models && gsutil -m cp -r gs://lifeos-assets/models/e5-small models/
+    id: 'fetch-model''
 
   # ==========================================
   # BUILD PHASE (Paralelo)
