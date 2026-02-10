@@ -4,30 +4,36 @@ FROM michaelf34/infinity:latest-cpu
 ENV HF_HOME=/tmp/huggingface
 WORKDIR /app
 
-
+# 2. Instalamos sentence-transformers para la digestión
 RUN pip install --no-cache-dir sentence-transformers
 
-# 3. SCRIPT DE "DIGESTIÓN" (LOAD & SAVE)
-
+# 3. DIGESTIÓN DEL MODELO (Esto funcionó perfecto antes)
+# Cargamos y guardamos para asegurar compatibilidad total de versiones.
 RUN python3 -c "from sentence_transformers import SentenceTransformer; \
-    print('🚀 Loading model into memory (Online)...'); \
+    print('🚀 Loading model (Online)...'); \
     model = SentenceTransformer('intfloat/multilingual-e5-small'); \
     print('💾 Saving sanitized model to /data/model...'); \
     model.save('/data/model'); \
-    print('✅ Model saved compatible with local libs.');"
+    print('✅ Model saved.');"
 
-
+# 4. FIX: Borramos modules.json para evitar validaciones externas
 RUN rm -f /data/model/modules.json
 
-# 5. Permisos totales
+# 5. Permisos
 RUN chmod -R 777 /data/model
 
-# 6. MODO OFFLINE (Solo para Runtime)
+# 6. MODO OFFLINE + CONFIGURACIÓN FORZADA (Aquí está la magia)
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 
+# FORZAMOS LA CONFIGURACIÓN VÍA ENV (Ignora el CMD frágil)
+ENV INFINITY_MODEL_ID=/data/model
+ENV INFINITY_ENGINE=torch
+ENV INFINITY_PORT=8080
+ENV INFINITY_HOST=0.0.0.0
+
 EXPOSE 8080
 
-# 7. Arranque
+# 7. Arranque simple
+# Ya no pasamos argumentos aquí porque las ENV mandan.
 ENTRYPOINT ["infinity_emb"]
-CMD ["--model-id", "/data/model", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
