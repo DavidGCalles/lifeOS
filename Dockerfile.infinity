@@ -1,18 +1,16 @@
-# Usamos la imagen oficial optimizada para CPU
 FROM michaelf34/infinity:latest-cpu
 
-# Seteamos el modelo apuntando a la CARPETA LOCAL
-ENV MODEL_ID=/app/model
+# Usamos la ruta completa y real
+ENV MODEL_ID=/app/models/e5-small
 ENV HF_HUB_OFFLINE=1
 
 WORKDIR /app
 
-# Copiamos la carpeta que descargamos (en local o desde GCS en Cloud Build)
+# Esto ahora funcionará porque fetch-model habrá creado ./models/e5-small
 COPY ./models/e5-small /app/models/e5-small
 
-# Cloud Run inyecta el tráfico por el puerto 8080 por defecto
 EXPOSE 8080
 
 ENTRYPOINT ["infinity_emb"]
-# IMPORTANTE: El model-id ahora apunta a la ruta interna del contenedor
-CMD ["--model-id", "/app/model", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch", "--offline"]
+# CMD actualizado con la ruta interna correcta
+CMD ["--model-id", "/app/models/e5-small", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch", "--offline"]
