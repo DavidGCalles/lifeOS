@@ -1,20 +1,26 @@
 FROM michaelf34/infinity:latest-cpu
 
+# 1. Variables de entorno para forzar modo offline
 ENV HF_HUB_OFFLINE=1
-ENV MODEL_ID=/app/model_data 
-# ^ Cambiamos el nombre para evitar conflictos mentales
+ENV TRANSFORMERS_OFFLINE=1
 
 WORKDIR /app
 
-# 1. Copiamos con un nombre distinto para asegurar que no hay anidamiento oculto.
-# 2. --chown=1000:1000 es CRUCIAL si la imagen base usa un usuario no-root.
-#    (El usuario por defecto en muchas imágenes de python/ai es 1000).
-COPY --chown=1000:1000 ./models/e5-small /app/model_data
+# 2. Copiamos los archivos a una ruta PLANA y NUEVA
+# Esto evita que se cree /app/models/e5-small/e5-small por error
+COPY ./models/e5-small /app/model_data
 
-# DEBUG DENTRO DEL BUILD (Para que veas el log si falla)
-RUN ls -la /app/model_data && echo "Config file is:" && ls /app/model_data/config.json
+# 3. EL FIX: Permisos nucleares
+# GSUtil descarga como root. Aquí le damos permiso de lectura a TODO EL MUNDO.
+# Esto soluciona el "LocalEntryNotFoundError" provocado por "Permission Denied".
+RUN chmod -R 777 /app/model_data
+
+# 4. Debugging visual (Opcional, para ver en logs si arranca)
+RUN ls -la /app/model_data
 
 EXPOSE 8080
 
 ENTRYPOINT ["infinity_emb"]
+
+# 5. Apuntamos a la carpeta que ACABAMOS de crear y dar permisos
 CMD ["--model-id", "/app/model_data", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
