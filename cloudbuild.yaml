@@ -35,7 +35,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-f', 'Dockerfile.infinity', '-t', 'gcr.io/$PROJECT_ID/lifeos-embeddings:$SHORT_SHA', '-t', 'gcr.io/$PROJECT_ID/lifeos-embeddings:latest', '.']
     id: 'build-embeddings'
-    waitFor: ['fetch-model']
+    waitFor: ['-']
 
   # ==========================================
   # PUSH PHASE
