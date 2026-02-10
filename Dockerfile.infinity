@@ -18,18 +18,21 @@ RUN chmod -R 777 /app/model_data
 # 4. VERIFICACIÓN DE INTEGRIDAD (El "Detector de Mentiras")
 # Esto obliga a transformers a cargar el modelo AHORA.
 # Si falta un archivo o la config está mal, el build fallará aquí con el error real.
+# 4. VERIFICACIÓN DE INTEGRIDAD (Corregido: Sin one-liner suicida)
 RUN pip install transformers sentencepiece protobuf && \
-    python3 -c "from transformers import AutoTokenizer, AutoModel; \
-    path='/app/model_data'; \
-    print(f'🐢 Testing load from {path}...'); \
-    try: \
-      tok = AutoTokenizer.from_pretrained(path); \
-      print('✅ Tokenizer loaded'); \
-      model = AutoModel.from_pretrained(path); \
-      print('✅ Model loaded'); \
-    except Exception as e: \
-      print(f'❌ CRASH: {e}'); \
-      exit(1)"
+    printf "import sys\n\
+from transformers import AutoTokenizer, AutoModel\n\
+path='/app/model_data'\n\
+print(f'🐢 Testing load from {path}...')\n\
+try:\n\
+    tok = AutoTokenizer.from_pretrained(path)\n\
+    print('✅ Tokenizer loaded')\n\
+    model = AutoModel.from_pretrained(path)\n\
+    print('✅ Model loaded')\n\
+except Exception as e:\n\
+    print(f'❌ CRASH: {e}')\n\
+    sys.exit(1)\n" > check_model.py && \
+    python3 check_model.py
 
 # 4. Debugging visual (Opcional, para ver en logs si arranca)
 #RUN ls -la /app/model_data
