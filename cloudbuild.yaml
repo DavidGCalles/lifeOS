@@ -6,7 +6,7 @@ steps:
       - '-c'
       - |
         mkdir -p models && gsutil -m cp -r gs://lifeos-assets/models/e5-small models/
-    id: 'fetch-model''
+    id: 'fetch-model'
 
   # ==========================================
   # BUILD PHASE (Paralelo)
