@@ -1,24 +1,39 @@
 FROM michaelf34/infinity:latest-cpu
 
-# 1. Variables de entorno para modo offline estricto
+# 1. Variables de entorno (Offline en Runtime, pero Online en Build)
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 ENV HF_HOME=/tmp/huggingface
 
 WORKDIR /app
 
-# 2. Copiamos el modelo a una ruta segura y neutral
-COPY ./models/e5-small /data/model
+# 2. INSTALAMOS DEPENDENCIAS DE DESCARGA
+# Necesitamos huggingface_hub para bajar el modelo "by the book"
+RUN pip install --no-cache-dir huggingface_hub
 
-# 3. FIX CRÍTICO: Borramos modules.json para evitar que infinity intente conectarse a internet
-# Esto fuerza el modo "arquitectura básica" (BERT puro) que sí funciona offline.
+# 3. SCRIPT DE DESCARGA (Inline para no depender de archivos externos)
+# Descarga intfloat/multilingual-e5-small en /data/model
+# Usamos snapshot_download para garantizar que bajan TODOS los ficheros necesarios.
+RUN python3 -c "from huggingface_hub import snapshot_download; \
+    print('🚀 Downloading model freshly from Hub...'); \
+    snapshot_download( \
+        repo_id='intfloat/multilingual-e5-small', \
+        local_dir='/data/model', \
+        local_dir_use_symlinks=False, \
+        ignore_patterns=['*.msgpack', '*.h5', '*.ot'] \
+    ); \
+    print('✅ Download complete.')"
+
+# 4. FIX FINAL: Borramos modules.json (Mantenemos tu fix, por si acaso)
+# Aunque la descarga sea limpia, modules.json sigue siendo problemático offline.
 RUN rm -f /data/model/modules.json
 
-# 4. Permisos de lectura para todos (para evitar líos de usuarios)
+# 5. Permisos totales (Paranoia mode: ON)
 RUN chmod -R 777 /data/model
 
 EXPOSE 8080
 
-# 5. Arrancamos directo
+# 6. Arranque
+# Apuntamos a la carpeta que acabamos de crear en el build
 ENTRYPOINT ["infinity_emb"]
 CMD ["--model-id", "/data/model", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
