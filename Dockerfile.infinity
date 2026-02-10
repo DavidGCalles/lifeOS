@@ -1,27 +1,33 @@
 FROM michaelf34/infinity:latest-cpu
 
+# 1. Configuración de Directorios
 ENV HF_HOME=/tmp/huggingface
 WORKDIR /app
 
-RUN pip install --no-cache-dir huggingface_hub
 
-RUN python3 -c "from huggingface_hub import snapshot_download; \
-    print('🚀 Downloading model freshly from Hub...'); \
-    snapshot_download( \
-        repo_id='intfloat/multilingual-e5-small', \
-        local_dir='/data/model', \
-        local_dir_use_symlinks=False, \
-        ignore_patterns=['*.msgpack', '*.h5', '*.ot'] \
-    ); \
-    print('✅ Download complete.')"
+RUN pip install --no-cache-dir sentence-transformers
+
+# 3. SCRIPT DE "DIGESTIÓN" (LOAD & SAVE)
+
+RUN python3 -c "from sentence_transformers import SentenceTransformer; \
+    print('🚀 Loading model into memory (Online)...'); \
+    model = SentenceTransformer('intfloat/multilingual-e5-small'); \
+    print('💾 Saving sanitized model to /data/model...'); \
+    model.save('/data/model'); \
+    print('✅ Model saved compatible with local libs.');"
+
 
 RUN rm -f /data/model/modules.json
+
+# 5. Permisos totales
 RUN chmod -R 777 /data/model
 
+# 6. MODO OFFLINE (Solo para Runtime)
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
 
 EXPOSE 8080
 
+# 7. Arranque
 ENTRYPOINT ["infinity_emb"]
 CMD ["--model-id", "/data/model", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
