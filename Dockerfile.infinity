@@ -1,45 +1,53 @@
 FROM michaelf34/infinity:latest-cpu
 
-# 1. Variables de entorno para forzar modo offline
+# 1. Variables de entorno CRÍTICAS
 ENV HF_HUB_OFFLINE=1
 ENV TRANSFORMERS_OFFLINE=1
+# Forzamos la home de cache a /tmp por si intenta escribir algo (Cloud Run es read-only excepto /tmp)
+ENV HF_HOME=/tmp/huggingface
+ENV SENTENCE_TRANSFORMERS_HOME=/tmp/sentence_transformers
 
 WORKDIR /app
 
-# 2. Copiamos los archivos a una ruta PLANA y NUEVA
-# Esto evita que se cree /app/models/e5-small/e5-small por error
-COPY ./models/e5-small /app/model_data
+# 2. Copiamos a una ruta ROOT neutral (fuera de /app)
+# Esto evita conflictos con el WORKDIR o volúmenes ocultos
+COPY ./models/e5-small /data/model
 
-# 3. EL FIX: Permisos nucleares
-# GSUtil descarga como root. Aquí le damos permiso de lectura a TODO EL MUNDO.
-# Esto soluciona el "LocalEntryNotFoundError" provocado por "Permission Denied".
-RUN chmod -R 777 /app/model_data
+# 3. Permisos Totales
+RUN chmod -R 777 /data/model
 
-# 4. VERIFICACIÓN DE INTEGRIDAD (El "Detector de Mentiras")
-# Esto obliga a transformers a cargar el modelo AHORA.
-# Si falta un archivo o la config está mal, el build fallará aquí con el error real.
-# 4. VERIFICACIÓN DE INTEGRIDAD (Corregido: Sin one-liner suicida)
-RUN pip install transformers sentencepiece protobuf && \
-    printf "import sys\n\
-from transformers import AutoTokenizer, AutoModel\n\
-path='/app/model_data'\n\
-print(f'🐢 Testing load from {path}...')\n\
+# 4. INSTALAMOS SENTENCE-TRANSFORMERS PARA EL CHECK
+# Infinity usa esto internamente. Si esto falla aquí, fallará en producción.
+RUN pip install --no-cache-dir sentence-transformers
+
+# 5. VERIFICACIÓN ESTRICTA (El "Detector de Mentiras" v2)
+# Ahora usamos SentenceTransformer, que es lo que realmente usa Infinity.
+RUN printf "import sys\n\
+from sentence_transformers import SentenceTransformer\n\
+path='/data/model'\n\
+print(f'🐢 Validating for SentenceTransformer from {path}...')\n\
 try:\n\
-    tok = AutoTokenizer.from_pretrained(path)\n\
-    print('✅ Tokenizer loaded')\n\
-    model = AutoModel.from_pretrained(path)\n\
-    print('✅ Model loaded')\n\
+    # Esto validará modules.json y la estructura completa\n\
+    model = SentenceTransformer(path, local_files_only=True)\n\
+    print('✅ SentenceTransformer loaded successfully!')\n\
 except Exception as e:\n\
-    print(f'❌ CRASH: {e}')\n\
-    sys.exit(1)\n" > check_model.py && \
-    python3 check_model.py
+    print(f'❌ CRASH: The model folder structure is invalid for SentenceTransformers!\\nError: {e}')\n\
+    sys.exit(1)\n" > check_real.py && \
+    python3 check_real.py
 
-# 4. Debugging visual (Opcional, para ver en logs si arranca)
-#RUN ls -la /app/model_data
+# 6. SCRIPT DE ARRANQUE (Runtime Debug)
+# Esto se ejecutará en Cloud Run. Si falla, veremos el `ls` antes de morir.
+RUN printf "#!/bin/bash\n\
+echo '=== CLOUD RUN DIAGNOSTICS ==='\n\
+echo 'User: \$(whoami)'\n\
+echo 'Ls /data/model:'\n\
+ls -la /data/model\n\
+echo '============================='\n\
+exec infinity_emb \"\$@\"\n" > /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
-ENTRYPOINT ["infinity_emb"]
+ENTRYPOINT ["/entrypoint.sh"]
 
-# 5. Apuntamos a la carpeta que ACABAMOS de crear y dar permisos
-CMD ["--model-id", "/app/model_data", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
+# Apuntamos a la nueva ruta /data/model
+CMD ["--model-id", "/data/model", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
