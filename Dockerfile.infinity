@@ -1,14 +1,9 @@
 FROM michaelf34/infinity:latest-cpu
 
-ENV HF_HUB_OFFLINE=0
-ENV TRANSFORMERS_OFFLINE=1
 ENV HF_HOME=/tmp/huggingface
-
 WORKDIR /app
 
 RUN pip install --no-cache-dir huggingface_hub
-
-# 3. SCRIPT DE DESCARGA (Inline para no depender de archivos externos)
 
 RUN python3 -c "from huggingface_hub import snapshot_download; \
     print('🚀 Downloading model freshly from Hub...'); \
@@ -20,15 +15,13 @@ RUN python3 -c "from huggingface_hub import snapshot_download; \
     ); \
     print('✅ Download complete.')"
 
-
 RUN rm -f /data/model/modules.json
-
-# 5. Permisos totales (Paranoia mode: ON)
 RUN chmod -R 777 /data/model
+
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
 
 EXPOSE 8080
 
-# 6. Arranque
-# Apuntamos a la carpeta que acabamos de crear en el build
 ENTRYPOINT ["infinity_emb"]
 CMD ["--model-id", "/data/model", "--host", "0.0.0.0", "--port", "8080", "--engine", "torch"]
