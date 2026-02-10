@@ -1,7 +1,7 @@
 steps:
   # 0. Descargar modelo desde TU bucket
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['-m', 'cp', '-r', 'gs://lifeos-assets-319986340006/models/e5-small', '.']
+    args: ['-m', 'cp', '-r', 'gs://lifeos-assets/models/e5-small', '.']
     id: 'fetch-model'
 
   # ==========================================
