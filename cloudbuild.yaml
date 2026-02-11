@@ -152,6 +152,7 @@ steps:
       - '--cpu=2'
       - '--cpu-boost'
       - '--timeout=600'
+      - '--allow-unauthenticated'
     id: 'deploy-embeddings'
     waitFor: ['push-embeddings']
 
