@@ -101,7 +101,7 @@ model_list:
       model: data/model
       custom_llm_provider: openai
       api_base: os.environ/EMBEDDING_API_BASE
-      api_key: "infinity-service"
+      api_key: os.environ/INFINITY_API_KEY
       rpm: 1000
       tpm: 1000000
 
