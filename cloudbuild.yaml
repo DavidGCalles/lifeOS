@@ -133,6 +133,7 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
+      - '--set-env-vars=EMBEDDING_API_BASE=${_EMBEDDING_API_BASE}'
     id: 'deploy-litellm'
     waitFor: ['push-litellm']
 
