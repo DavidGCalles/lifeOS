@@ -10,7 +10,11 @@ COPY models/e5-small-sanitized /data/model
 # 3. Permisos
 RUN chmod -R 777 /data/model
 
-# 4. FORZAMOS LA CONFIGURACIÓN VÍA ENV (Ignora el CMD frágil)
+# 4. MODO OFFLINE - Evita que el contenedor intente conectar a HuggingFace
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
+
+# 5. FORZAMOS LA CONFIGURACIÓN VÍA ENV (Ignora el CMD frágil)
 ENV INFINITY_MODEL_ID=/data/model
 ENV INFINITY_ENGINE=torch
 ENV INFINITY_PORT=8080
@@ -18,6 +22,6 @@ ENV INFINITY_HOST=0.0.0.0
 
 EXPOSE 8080
 
-# 5. Arranque simple
+# 6. Arranque simple
 # Ya no pasamos argumentos aquí porque las ENV mandan.
 ENTRYPOINT ["infinity_emb"]
