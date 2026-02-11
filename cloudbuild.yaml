@@ -1,23 +1,85 @@
 steps:
-# 0. Descargar modelo asegurando que se crea la ruta models/
-#  - name: 'gcr.io/cloud-builders/gsutil'
-#    entrypoint: 'bash'
-#    args: 
-#      - '-c'
-#      - |
-#        mkdir -p models && gsutil -m cp -r gs://lifeos-assets/models/e5-small models/
-#    id: 'fetch-model'
-#  
-#  - name: 'ubuntu'
-#    entrypoint: 'bash'
- #   args: 
-  #    - '-c'
-   #   - |
-    #    echo "=== CONTENIDO DESCARGADO ==="
-     #   ls -R models/
-      #  echo "============================"
-   # id: 'debug-fs'
-   # waitFor: ['fetch-model']
+  # =====================================================================================
+  # STEP 1: MODEL HYDRATION (Conditional)
+  # =====================================================================================
+  # 1.a. Check if the "sanitized" model already exists in our GCS bucket.
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'check-model-in-gcs'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if gsutil -q stat gs://lifeos-assets/models/e5-small-sanitized/config.json; then
+          echo "✅ Model already exists in GCS. Skipping hydration."
+          # Create a flag file to signal that the download should be skipped.
+          touch /workspace/skip_hydration.flag
+        else
+          echo "📦 Model not found in GCS. Starting hydration process..."
+        fi
+
+  # 1.b. If the model is NOT in GCS, prepare it.
+  - name: 'python:3.9-slim'
+    id: 'prepare-model'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ ! -f /workspace/skip_hydration.flag ]; then
+          echo "🐍 Installing dependencies for model preparation..."
+          pip install sentence-transformers
+          
+          echo "🧠 Running model preparation script..."
+          python3 scripts/prepare_model.py
+        else
+          echo "Skipping model preparation."
+        fi
+    waitFor: ['check-model-in-gcs']
+
+  # 1.c. If the model was prepared, upload it to GCS.
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'upload-model'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ ! -f /workspace/skip_hydration.flag ]; then
+          echo "☁️ Uploading sanitized model to GCS..."
+          gsutil -m cp -r models/e5-small-sanitized gs://lifeos-assets/models/
+        else
+          echo "Skipping model upload."
+        fi
+    waitFor: ['prepare-model']
+
+  # 1.d. Download the model from GCS ONLY IF it wasn't generated locally
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'fetch-model'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # This step runs only if the hydration was skipped, meaning the model
+        # already existed in GCS and needs to be downloaded for the build.
+        if [ -f /workspace/skip_hydration.flag ]; then
+          echo "Fetching pre-existing model from GCS for Docker build..."
+          mkdir -p models
+          gsutil -m cp -r gs://lifeos-assets/models/e5-small-sanitized models/
+        else
+          echo "Skipping GCS download because model was generated locally."
+        fi
+    waitFor: ['upload-model']
+
+  # 1.e. [DEBUG] Verify that the model files are in the workspace
+  - name: 'ubuntu'
+    id: 'debug-fs'
+    entrypoint: 'bash'
+    args: 
+      - '-c'
+      - |
+        echo "=== Verifying model files in workspace ==="
+        ls -R models/
+        echo "======================================"
+    waitFor: ['fetch-model']
+
 
   # ==========================================
   # BUILD PHASE (Paralelo)
