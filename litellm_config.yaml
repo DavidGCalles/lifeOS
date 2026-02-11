@@ -98,7 +98,7 @@ model_list:
 
   - model_name: text-embedding
     litellm_params:
-      model: intfloat/multilingual-e5-small
+      model: openai/intfloat/multilingual-e5-small
       custom_llm_provider: openai
       api_base: os.environ/EMBEDDING_API_BASE
       api_key: "infinity-service"
