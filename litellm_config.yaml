@@ -93,12 +93,12 @@ model_list:
       rpm: 1000 # Alto throughput para audio
 
   # ==========================================================
-  # POOL 5: EMBEDDINGS
+  # POOL 5: EMBEDDINGS. Infinity inference server
   # ==========================================================
 
   - model_name: text-embedding
     litellm_params:
-      model: openai/intfloat/multilingual-e5-small
+      model: data/model
       custom_llm_provider: openai
       api_base: os.environ/EMBEDDING_API_BASE
       api_key: "infinity-service"
