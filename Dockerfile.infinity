@@ -22,6 +22,6 @@ ENV INFINITY_HOST=0.0.0.0
 
 EXPOSE 8080
 
-# 6. Arranque simple
-# Ya no pasamos argumentos aquí porque las ENV mandan.
+# 6. Arranque con API Key Obligatoria
 ENTRYPOINT ["infinity_emb"]
+CMD ["--api-key", "$INFINITY_API_KEY"]
