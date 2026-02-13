@@ -93,12 +93,17 @@ model_list:
       rpm: 1000 # Alto throughput para audio
 
   # ==========================================================
-  # EMBEDDINGS
+  # POOL 5: EMBEDDINGS. Infinity inference server
   # ==========================================================
-  - model_name: text-embedding-004
+
+  - model_name: text-embedding
     litellm_params:
-      model: gemini/text-embedding-004
-      api_key: os.environ/GEMINI_API_KEY
+      model: data/model
+      custom_llm_provider: openai
+      api_base: os.environ/EMBEDDING_API_BASE
+      api_key: os.environ/INFINITY_API_KEY
+      rpm: 1000
+      tpm: 1000000
 
   # ==========================================================
   # Local LLM (opcional)
@@ -119,6 +124,7 @@ router_settings:
     - "router-model": ["gemini/gemma-3-4b-it", "gemini/gemma-3-1b-it", "gemini/gemma-3-12b-it", "gemini/gemma-3-27b-it", "local-fallback"]
     - "vision-model": ["gemini/gemini-2.5-flash-lite", "gemini/gemini-2.5-flash", "gemini/gemini-3-flash-preview", "local-fallback"]
     - "audio-model": ["gemini/gemini-3-flash-preview", "local-fallback"]
+    - "text-embedding": ["data/model"]
   
   allowed_fails: 1
   cooldown_time: 1 
