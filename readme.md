@@ -107,6 +107,8 @@ graph TD
         FR17_Drive(<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Input: Linked Resources):::high
     end
 
+    ADR13_Embed(<b>ADR-013: Self-hosted Embeddings Service</b><br/>Scope: Memory management<br/>Status: Completed):::done
+
     %% --- FASE 3: ARQUITECTURA DE MEMORIA ---
     subgraph Phase3 [Fase 3: Unified Memory Core]
         direction TB
@@ -116,7 +118,8 @@ graph TD
 
     %% DEPENDENCIAS
     FR16_Logic --> FR16_Logs
-    FR16_Logs --> FR17_Doc
+    FR16_Logs --> ADR13_Embed
+    ADR13_Embed --> FR17_Doc
     FR17_Doc --> FR17_Drive
     FR17_Drive --> ADR12_Interface
     ADR12_Interface --> ADR12_RAG
