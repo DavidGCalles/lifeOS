@@ -40,7 +40,13 @@ class DocumentDriver(SensoryDriver):
             # 1. Handle PDF
             if mime_type == 'application/pdf' or file_name.lower().endswith('.pdf'):
                 logger.info(f"   Rendering PDF to images and extracting text...")
-                images = render_document_to_images(file_content)
+                # use dynamic geometric limit to avoid huge payloads
+                images = render_document_to_images(
+                    file_content,
+                    max_pages=5,
+                    max_side=1024,  # caps longest edge to 1024px (800px for very light models)
+                    quality=85,
+                )
                 extracted_text = await vision_extract_text(images)
             
             # 2. Handle Images (sent as documents)

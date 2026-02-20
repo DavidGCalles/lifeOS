@@ -20,71 +20,81 @@ logger = logging.getLogger(__name__)
 
 
 def render_document_to_images(
-    file_stream: bytes, 
+    file_stream: bytes,
     max_pages: int = 5,
-    dpi: int = 300
+    max_side: int = 1024,
+    quality: int = 85,
 ) -> List[str]:
     """
-    Convert PDF pages into high-resolution Base64-encoded JPEG images.
-    
+    Convert PDF pages into Base64-encoded JPEG images suitable for LLM vision parsing.
+
+    The previous implementation used a fixed DPI which produced extremely large
+    images (e.g. A4 @ 300dpi -> ~8.7MP) and caused VRAM/RAM exhaustion when used
+    with local models.  To avoid this we calculate a zoom factor per page such that
+    *no* page exceeds ``max_side`` pixels on its longest dimension.  By default the
+    limit is 1024 pixels (800 is recommended for very lightweight models).
+
+    Images are also aggressively compressed with JPEG quality controlled by the
+    ``quality`` parameter (default 85) to reduce payload size.
+
     Args:
-        file_stream: Binary PDF content (bytes)
-        max_pages: Maximum number of pages to convert (default: 5)
-        dpi: Resolution in dots per inch (default: 300 for high-res)
-    
+        file_stream: Binary PDF content (bytes).
+        max_pages: Maximum number of pages to convert (default: 5).
+        max_side: Maximum number of pixels on the longest side of the output image.
+        quality: JPEG quality level (1-100, higher is better quality but larger size).
+
     Returns:
         List of Base64-encoded JPEG strings, one per page.
-        
+
     Raises:
-        ValueError: If file_stream is empty or not a valid PDF
-        RuntimeError: If PDF rendering fails
-    
-    Example:
-        >>> with open("document.pdf", "rb") as f:
-        >>>     images = render_document_to_images(f.read(), max_pages=3)
-        >>> print(f"Extracted {len(images)} images")
+        ValueError: If ``file_stream`` is empty.
+        RuntimeError: If PDF opening or rendering fails, or if no images are generated.
     """
     if not file_stream:
         raise ValueError("file_stream cannot be empty")
-    
+
     try:
-        # Open PDF from binary stream
         pdf_document = fitz.open(stream=file_stream, filetype="pdf")
     except Exception as e:
         raise RuntimeError(f"Failed to open PDF: {str(e)}") from e
-    
-    images = []
+
+    images: List[str] = []
     num_pages = min(len(pdf_document), max_pages)
-    
-    # Convert zoom factor to match DPI (standard is 72 DPI)
-    zoom_factor = dpi / 72.0
-    mat = fitz.Matrix(zoom_factor, zoom_factor)
-    
+
     for page_num in range(num_pages):
         try:
             page = pdf_document[page_num]
-            
-            # Render page to high-resolution image (JPEG)
+
+            # Determine scaling such that the longest side is <= max_side
+            rect = page.rect
+            longest_pt = max(rect.width, rect.height)  # points at 72 dpi
+            if longest_pt <= 0:
+                raise RuntimeError("Invalid page dimensions encountered")
+
+            # Compute DPI required to hit the target pixel size: pixels = pts * dpi / 72
+            target_dpi = max_side * 72.0 / longest_pt
+            zoom = target_dpi / 72.0
+            mat = fitz.Matrix(zoom, zoom)
+
             pix = page.get_pixmap(matrix=mat, alpha=False)
-            
-            # Convert pixmap to JPEG bytes
-            image_bytes = pix.tobytes(output="jpeg", jpg_quality=95)
-            
-            # Encode to Base64
+
+            # Compress to JPEG with specified quality
+            image_bytes = pix.tobytes(output="jpeg", jpg_quality=quality)
+
             base64_image = base64.b64encode(image_bytes).decode("utf-8")
             images.append(base64_image)
-            
-            logger.debug(f"Successfully rendered page {page_num + 1}/{num_pages}")
-            
+
+            logger.debug(f"Rendered page {page_num + 1}/{num_pages} with zoom {zoom:.2f}")
+
         except Exception as e:
             logger.error(f"Failed to render page {page_num + 1}: {str(e)}")
             raise RuntimeError(f"Failed to render page {page_num + 1}: {str(e)}") from e
-    
+
     pdf_document.close()
-    
+
     if not images:
         raise RuntimeError("No images were extracted from the PDF")
-    
+
     logger.info(f"Successfully extracted {len(images)} images from PDF")
     return images
 

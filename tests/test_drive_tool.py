@@ -95,7 +95,12 @@ class TestGoogleDriveTools:
             
             assert "Visual Analysis of 'Invoice.pdf'" in result
             assert "$150.00" in result
+            # ensure the import was called with our new geometric defaults
             mock_render.assert_called_once()
+            args, kwargs = mock_render.call_args
+            # first positional argument is the binary content; others should include our new keywords
+            assert kwargs.get('max_side') == 1024
+            assert kwargs.get('quality') == 85
             mock_vision.assert_called_once()
             
         logger.info("✅ DriveReadTool PDF/Vision test passed.")

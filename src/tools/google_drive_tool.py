@@ -110,8 +110,13 @@ class DriveReadTool(BaseTool):
                 binary_content = file_stream.read()
                 
                 if mime_type == 'application/pdf':
-                    # Convert PDF to images
-                    images = render_document_to_images(binary_content, max_pages=5)
+                    # Convert PDF to images, bounding each page's longest side to 1024px
+                    images = render_document_to_images(
+                        binary_content,
+                        max_pages=5,
+                        max_side=1024,
+                        quality=85,
+                    )
                     # Extract text from images
                     markdown_content = vision_extract_text_sync(images)
                 else:
