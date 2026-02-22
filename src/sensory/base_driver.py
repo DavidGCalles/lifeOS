@@ -9,6 +9,7 @@ class SensoryType(StrEnum):
     """
     VISUAL = auto()   # Fotos, Imágenes comprimidas
     AUDIO = auto()    # Notas de voz, Archivos de audio
+    DOCUMENT = auto() # Documentos (PDF, Texto)
     VIDEO = auto()    # Video notas (Future Scope)
     LOCATION = auto() # GPS (Future Scope)
     DEBUG = auto()    # Para tests internos

@@ -21,7 +21,7 @@ from src.logging_config import configure_logging, install_grpc_noise_filter
 from src.social.shield import SocialShield
 
 # --- SENSORY IMPORTS ---
-from src.sensory import SensoryCortex
+from src.sensory import SensoryCortex, DocumentDriver
 from src.sensory.drivers.visual_driver import VisualDriver
 from src.sensory.drivers.audio_driver import AudioDriver
 
@@ -48,9 +48,11 @@ async def lifespan(app: FastAPI):
     # Initialize drivers
     visual_driver = VisualDriver()
     audio_driver = AudioDriver()
+    document_driver = DocumentDriver()
     # Register drivers
-    cortex.register_driver(visual_driver, "visual")
-    cortex.register_driver(audio_driver, "audio")
+    cortex.register_driver("photo", visual_driver)
+    cortex.register_driver("voice", audio_driver)
+    cortex.register_driver("document", document_driver)
     
     cortex_task = asyncio.create_task(cortex.run_forever())
     
@@ -319,10 +321,11 @@ async def lifespan(app: FastAPI):
     cortex = SensoryCortex()
     cortex.register_driver('photo', VisualDriver())
     cortex.register_driver('voice', AudioDriver())
+    cortex.register_driver('document', DocumentDriver())
     
     bot_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     bot_app.add_handler(CommandHandler('start', start))
-    bot_app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VOICE, chat_logic))
+    bot_app.add_handler(MessageHandler(filters.TEXT | filters.PHOTO | filters.VOICE | filters.Document.ALL, chat_logic))
     bot_app.add_error_handler(error_handler)
     
     app.state.bot_app = bot_app

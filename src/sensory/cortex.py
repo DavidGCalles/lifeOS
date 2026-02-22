@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import Any
 from telegram import Update
 from src.sensory.base_driver import SensoryDriver, SensoryType
@@ -18,6 +19,11 @@ class SensoryCortex:
             logger.info("🧠 Sensory Cortex Online: Initialized.")
         return cls._instance
 
+    @classmethod
+    def get_instance(cls) -> "SensoryCortex":
+        """Alternative singleton access."""
+        return cls()
+
     def register_driver(self, telegram_field: str, driver: SensoryDriver) -> None:
         """
         Vincula un campo de Telegram con un Driver específico.
@@ -25,6 +31,17 @@ class SensoryCortex:
         """
         self._drivers[telegram_field] = driver
         logger.info(f"   👁️  Sense Registered: [{telegram_field}] -> {driver.__class__.__name__} ({driver.sensory_type.value})")
+
+    async def run_forever(self) -> None:
+        """
+        Keep the cortex alive if background tasks are needed.
+        Currently just waits for cancellation.
+        """
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            logger.info("Sensory Cortex background task cancelled.")
 
     async def process(self, update: Update) -> dict[str, Any] | None:
         """

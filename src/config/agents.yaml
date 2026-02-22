@@ -17,6 +17,7 @@ jane:
     - search
     - memory_core
     - calendar_core
+    - drive_core
     - attendee_search
     - user_governance
   allow_delegation: true
