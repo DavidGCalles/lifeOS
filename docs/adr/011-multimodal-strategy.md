@@ -1,8 +1,8 @@
-# ADR-011- Sensory Cortex & Multimodal Input Strategy
+# ADR-011: Sensory Cortex & Multimodal Input Strategy
 
-* **Status:** Accepted
+* **Status:** deployed
 * **Date:** 2026-01-30
-* **Deciders:** David G. Calles
+* **Deciders:** DavidGCalles
 * **Technical Story:** [FR-02.2] Multimodal Perception (Eyes & Ears)
 
 ## Context and Problem Statement

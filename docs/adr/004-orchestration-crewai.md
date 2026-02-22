@@ -1,8 +1,8 @@
-# [MADR] 004 - Orchestration Framework Strategy (CrewAI)
+# ADR-004: Orchestration Framework Strategy (CrewAI)
 
-* **Status:** Accepted
+* **Status:** deployed
 * **Date:** 2025-12-21
-* **Deciders:** David G. Calles
+* **Deciders:** DavidGCalles
 * **Technical Story:** Selection of the engine to manage multi-agent interactions.
 
 ## Context and Problem Statement

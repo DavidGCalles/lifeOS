@@ -1,7 +1,8 @@
-# ADR-013- Embedding Service
+# ADR-013: Embedding Service
 
-**Status:** Accepted
+**Status:** deployed
 **Date:** 2026-02-06
+**Deciders:** DavidGCalles
 **Context:**
 We initially relied on Google's `text-embedding-004` model. On Jan 14th, 2026, Google deprecated this model, causing a critical failure in our vector memory system. Switching to a new proprietary model (e.g., `gemini-embedding-001`) forces a complete wipe of the vector database due to dimension/latent space incompatibility and leaves us vulnerable to future deprecations.
 

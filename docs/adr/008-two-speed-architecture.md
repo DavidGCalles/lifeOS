@@ -1,8 +1,8 @@
-# [ADR] 008 - Hybrid Two-Speed Architecture & Latency Optimization
+# ADR-008: Hybrid Two-Speed Architecture & Latency Optimization
 
-* **Status:** Proposed
+* **Status:** deployed
 * **Date:** 2026-01-14
-* **Deciders:** David G. Calles
+* **Deciders:** DavidGCalles
 * **Technical Story:** Post-deployment analysis revealed unacceptable latency (4+ minutes) for basic interactions due to the overhead of the orchestration framework.
 
 ## Context and Problem Statement

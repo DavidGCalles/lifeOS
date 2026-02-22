@@ -1,9 +1,9 @@
-# [MADR] 001: Memory Architecture Strategy (Service-Based RAG)
-**Status:** Accepted
+# ADR-001: Memory Architecture Strategy (Service-Based RAG)
+**Status:** deployed
 
 **Date:** 2025-12-21
 
-**Deciders:** David G. Calles
+**Deciders:** DavidGCalles
 
 **Technical Story:** [Issue #16](https://github.com/DavidGCalles/lifeOS/issues/16)
 

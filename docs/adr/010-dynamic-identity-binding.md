@@ -1,8 +1,8 @@
-# Core Tools Expansion & Dynamic Identity Binding
+# ADR-010: Core Tools Expansion & Dynamic Identity Binding
 
-* **Status:** Accepted
+* **Status:** deployed
 * **Date:** 2026-01-23
-* **Deciders:** David G. Calles
+* **Deciders:** DavidGCalles
 * **Technical Story:** Enabling agents to interact with the real world (Google Workspace) and managing user identity mapping dynamically without manual configuration.
 
 ## Context and Problem Statement

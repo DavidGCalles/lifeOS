@@ -1,8 +1,8 @@
-# [MADR] 006 - Identity & RBAC Strategy (Middleware Pattern)
+# ADR-006: Identity & RBAC Strategy (Middleware Pattern)
 
-* **Status:** Accepted
+* **Status:** deployed
 * **Date:** 2025-12-24
-* **Deciders:** Technical Architecture Lead
+* **Deciders:** DavidGCalles
 * **Technical Story:** Transition from a single-user prototype to a multi-user Family Governance System.
 
 ## Context and Problem Statement

@@ -1,8 +1,8 @@
-# [MADR] 003 - LLM Abstraction Strategy (LiteLLM Proxy)
+# ADR-003: LLM Abstraction Strategy (LiteLLM Proxy)
 
-* **Status:** Accepted
+* **Status:** deployed
 * **Date:** 2025-12-21
-* **Deciders:** David G. Calles
+* **Deciders:** DavidGCalles
 * **Technical Story:** Selection of the interface layer between LifeOS and AI Model Providers.
 
 ## Context and Problem Statement

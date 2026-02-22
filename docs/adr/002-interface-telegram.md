@@ -1,10 +1,10 @@
-# [MADR] 002: Selection of Telegram as Primary User Interface
+# ADR-002: Selection of Telegram as Primary User Interface
 
-**Status:** Accepted
+**Status:** deployed
 
 **Date:** 2025-12-21
 
-**Deciders:** David G. Calles
+**Deciders:** DavidGCalles
 
 **Consulted:** LifeOS Architecture Team
 

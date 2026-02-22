@@ -1,6 +1,6 @@
 # ADR-007: Standardization on Qdrant and Removal of Multi-Engine Support
 
-* **Status:** Accepted
+* **Status:** deployed
 * **Date:** 2026-01-09
 * **Deciders:** DavidGCalles
 

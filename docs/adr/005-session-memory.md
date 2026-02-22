@@ -1,8 +1,8 @@
-# [MADR] 005: Conversational Session Management Strategy (JSON File)
+# ADR-005: Conversational Session Management Strategy (JSON File)
 
-* **Status:** Accepted
+* **Status:** deployed
 * **Date:** 2025-12-23
-* **Deciders:** David G. Calles
+* **Deciders:** DavidGCalles
 * **Technical Story:** Immediate resolution of agent statelessness (amnesia) between messages.
 
 ## Context and Problem Statement
