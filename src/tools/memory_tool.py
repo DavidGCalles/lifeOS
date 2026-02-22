@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from src.schemas.memory import (
     EpisodicMemoryItem, 
     EpisodicMemoryMetadata, 
-    MemoryDomain, 
+    MemoryCategory, 
     MemoryType, 
     MemorySource
 )
@@ -19,14 +19,14 @@ logger = get_logger(__name__)
 class RememberInput(BaseModel):
     """Input schema for saving a memory."""
     content: str = Field(..., description="The factual content, decision, or insight to remember.")
-    domain: MemoryDomain = Field(..., description="The category of the memory (professional, finance, health, etc).")
+    category: MemoryCategory = Field(..., description="The category of the memory (professional, finance, health, etc).")
     type: MemoryType = Field(..., description="The nature of the memory (fact, preference, plan, decision).")
     tags: str | None = Field(None, description="Comma-separated keywords for context.")
 
 class RecallInput(BaseModel):
     """Input schema for searching memories."""
     query: str = Field(..., description="The semantic query to search for relevant memories.")
-    domain: MemoryDomain | None = Field(None, description="Optional filter: restrict search to a specific domain.")
+    category: MemoryCategory | None = Field(None, description="Optional filter: restrict search to a specific category.")
 
 class ForgetInput(BaseModel):
     """Input schema for deleting a memory."""
@@ -39,7 +39,7 @@ class RememberTool(BaseTool):
     description: str = (
         "Use this tool to PERMANENTLY save important information, decisions, "
         "preferences, or plans. Do not use for trivial chat history. "
-        "Requires categorizing the memory by domain and type."
+        "Requires categorizing the memory by category and type."
     )
     args_schema: type[BaseModel] = RememberInput
     # Estado interno para guardar quién está llamando a la tool
@@ -49,9 +49,10 @@ class RememberTool(BaseTool):
         """Inyecta el usuario actual antes de ejecutar la tool."""
         self._current_user = user
 
-    async def _run(self, content: str, domain: str, type: str, tags: str | None = None) -> str:
+    async def _run(self, content: str, category: str, type: str, tags: str | None = None) -> str:
         # Determinamos el autor
         author_name = self._current_user.name if self._current_user else "unknown_system"
+        owner_id = self._current_user.telegram_id if self._current_user else "unknown"
         try:
             manager = VectorMemoryManager()
             logger.info("RememberTool invoked by %s. Adding memory (len=%d)...", author_name, len(content))
@@ -61,7 +62,10 @@ class RememberTool(BaseTool):
             memory = EpisodicMemoryItem(
                 content=content,
                 metadata=EpisodicMemoryMetadata(
-                    domain=domain, # type: ignore (Pydantic valida el string contra el Enum)
+                    owner_id=owner_id,
+                    # domain is fixed by the subclass to EPISODIC, so the caller
+                    # only needs to provide the original "category" semantic.
+                    category=category,
                     type=type,     # type: ignore
                     source=MemorySource.AGENT_REFLECTION, 
                     context_tags=tags
@@ -88,14 +92,14 @@ class RecallTool(BaseTool):
     )
     args_schema: type[BaseModel] = RecallInput
 
-    async def _run(self, query: str, domain: str | None = None) -> str:
+    async def _run(self, query: str, category: str | None = None) -> str:
         try:
             manager = VectorMemoryManager()
-            logger.debug("RecallTool query=%s domain=%s", query, domain)
+            logger.debug("RecallTool query=%s category=%s", query, category)
             
             filters = {}
-            if domain:
-                filters["domain"] = domain
+            if category:
+                filters["category"] = category
 
             results = await manager.search_memory(query=query, filters=filters if filters else None)
             

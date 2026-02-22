@@ -69,7 +69,12 @@ class VectorMemoryManager:
         # --- FIX: Create Payload Indexes for Filtering ---
         # Qdrant operations are idempotent, so we can run this safely on every startup.
         # We index 'domain', 'type', and 'source' to allow fast filtering.
-        payload_indexes = ["domain", "type", "source"]
+        # Payload fields that we will create indexes for to speed up filtering.
+        # After ADR-012 we added a strict metadata schema: `domain` now refers to
+        # the semantic collection type (episodic/document/system) and `category`
+        # holds the old classification (professional, finance, etc.).  We also
+        # index owner_id and visibility for future RBAC queries.
+        payload_indexes = ["domain", "category", "type", "source", "visibility", "owner_id"]
         
         for field in payload_indexes:
             try:
