@@ -221,31 +221,53 @@ class VectorMemoryManager:
     async def search_memory(
         self, 
         query: str, 
-        filters: dict | None = None, 
+        filters: dict | models.Filter | None = None, 
         limit: int = 5
     ) -> list[EpisodicMemoryItem]:
         """
         Semantic search retrieving structured objects.
+
+        The ``filters`` argument may be supplied as a simple mapping of
+        ``field_name -> value`` (which is interpreted as an **AND**/``must``
+        filter) or as a ``qdrant_client.models.Filter`` instance.  The latter
+        form is useful for advanced RBAC logic where ``should`` clauses are
+        required; this is how :class:`MemoryGateway` enforces visibility
+        rules.
         """
         if self._client is None:
             await self._initialize_client()
         await self._ensure_collection(self._collection_name)
         query_vector = await self._get_embedding(query)
         
-        filter_conditions = []
-        if filters:
-            for key, value in filters.items():
-                filter_conditions.append(
-                    models.FieldCondition(key=key, match=models.MatchValue(value=value))
-                )
-        
-        qdrant_filter = models.Filter(must=filter_conditions) if filter_conditions else None
+        # handle the two supported filter formats
+        qdrant_filter = None
+        if filters is not None:
+            if isinstance(filters, models.Filter):
+                qdrant_filter = filters
+            elif isinstance(filters, dict):
+                filter_conditions = []
+                for key, value in filters.items():
+                    filter_conditions.append(
+                        models.FieldCondition(key=key, match=models.MatchValue(value=value))
+                    )
+                qdrant_filter = models.Filter(must=filter_conditions) if filter_conditions else None
+            else:
+                # fallback: attempt to treat like dict for compatibility
+                try:
+                    filter_conditions = []
+                    for key, value in dict(filters).items():
+                        filter_conditions.append(
+                            models.FieldCondition(key=key, match=models.MatchValue(value=value))
+                        )
+                    qdrant_filter = models.Filter(must=filter_conditions) if filter_conditions else None
+                except Exception:
+                    qdrant_filter = None
 
         try:
             result_obj = await self._client.query_points(
                 collection_name=self._collection_name,
-                query=query_vector,         # <-- CAMBIO 1: 'query_vector' ahora es 'query'
-                query_filter=qdrant_filter, # <-- Se mantiene 'query_filter'
+                query=query_vector,
+                query_filter=qdrant_filter,
                 limit=limit
             )
             
