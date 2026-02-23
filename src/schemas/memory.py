@@ -84,3 +84,31 @@ class EpisodicMemoryItem(BaseModel):
     metadata: EpisodicMemoryMetadata
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     created_by: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Session message schema used by the Firestore-backed SessionManager.
+# According to ADR-012 every document stored in the sessions/messages
+# collection must include the universal BaseMemoryMetadata fields in order
+# to support strict RBAC and domain segregation. This model wraps the
+# conversational payload together with the required metadata and forbids
+# extraneous keys to avoid legacy data creeping back in.
+# ---------------------------------------------------------------------------
+
+class SessionMessage(BaseModel):
+    # fields reflecting what has historically been stored in Firestore
+    message_id: str | int | None = None
+    role: str
+    content: str
+    sender_id: str
+    name: str
+    input_type: str
+    agent_key: str | None = None
+
+    # RBAC / routing metadata
+    metadata: BaseMemoryMetadata
+
+    # Disallow any additional unspecified keys to guarantee schema
+    # compliance during validation.
+    model_config = {"extra": "forbid"}
+

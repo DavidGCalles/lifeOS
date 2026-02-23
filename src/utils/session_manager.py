@@ -4,6 +4,15 @@ from google.cloud import firestore
 from google.cloud.firestore import AsyncClient, Query 
 from dotenv import load_dotenv
 import logging
+from pydantic import ValidationError
+
+# import the new schemas needed for validation
+from src.schemas.memory import (
+    SessionMessage,
+    BaseMemoryMetadata,
+    MemoryVisibility,
+    MemoryDomainType,
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -12,6 +21,15 @@ class SessionManager:
     """
     Gestor de sesiones en Firestore (Async Edition).
     Estructura: sessions/{chat_id}/messages/{message_id}
+
+    **Schema enforcement:** every document written by `add_message` is
+    validated against the `SessionMessage` Pydantic model (see
+    `src.schemas.memory`). This guarantees that the universal RBAC fields
+    (`owner_id`, `visibility`, `domain`) are always present, preventing
+    arbitrary dictionaries from bypassing access control.
+
+    New conversational turns default to `PRIVATE` visibility and
+    `owner_id` is derived automatically from the Telegram user ID.
     """
     _firestore_client: AsyncClient | None = None
     _USE_FIRESTORE: bool = os.getenv('USE_FIRESTORE', 'False').lower() == 'true'
@@ -33,48 +51,65 @@ class SessionManager:
         return cls._firestore_client
 
     @classmethod
-    async def add_message(cls, chat_id: int | str, message_data: dict[str, Any]) -> None:
+    async def add_message(cls, chat_id: int | str, message_data: dict[str, Any]):
         """
-        Guarda un mensaje de forma ASÍNCRONA.
+        Guarda un mensaje de forma ASÍNCRONA, validándolo primero contra SessionMessage.
+        Devuelve el objeto SessionMessage validado.
         """
         db = cls._get_db()
-        if not db:
-            return
-
         cid = str(chat_id)
         
-        # 1. Actualizar metadatos de la sesión padre (Upsert)
-        session_ref = db.collection('sessions').document(cid)
+        # 1. Extraer identificadores base
+        owner_id = str(message_data.get('user_id', message_data.get('sender_id', 'unknown')))
         
-        # Await obligatorio en operaciones de red
-        await session_ref.set({
-            'last_activity': firestore.SERVER_TIMESTAMP,
-            'type': 'group' if cid.startswith('-') else 'private' 
-        }, merge=True)
-
-        # 2. Preparar payload
-        msg_id_raw = message_data.get('message_id', '')
-        msg_id_str = str(msg_id_raw)
-        
-        doc_data = {
-            'message_id': msg_id_raw,
-            'role': message_data.get('role', 'unknown'),
-            'content': message_data.get('content', ''),
-            'timestamp': firestore.SERVER_TIMESTAMP,
-            'sender_id': str(message_data.get('user_id', '')),
-            'name': message_data.get('name', 'Unknown'),
-            'input_type': message_data.get('input_type', 'text'),
-            'agent_key': message_data.get('agent_key', None) 
+        # 2. Construir payload base con defaults solo para lo NO crítico
+        session_payload = {
+            "sender_id": owner_id,
+            "name": message_data.get('name', 'Unknown'),
+            "input_type": message_data.get('input_type', 'text'),
+            "metadata": {
+                "owner_id": owner_id,
+                "visibility": message_data.get('visibility', 'PRIVATE'),
+                "domain": "episodic" 
+            }
         }
 
-        try:
-            # Operaciones awaitables
-            if msg_id_str:
-                await session_ref.collection('messages').document(msg_id_str).set(doc_data)
-            else:
-                await session_ref.collection('messages').add(doc_data)
-        except Exception as e:
-            logger.warning(f"⚠️ Error guardando mensaje en Firestore: {e}")
+        # 3. Mapear campos críticos SIN defaults (para que Pydantic chille si faltan)
+        if 'role' in message_data: session_payload['role'] = message_data['role']
+        if 'content' in message_data: session_payload['content'] = message_data['content']
+        
+        # Opcionales
+        if 'message_id' in message_data: session_payload['message_id'] = message_data['message_id']
+        if 'agent_key' in message_data: session_payload['agent_key'] = message_data['agent_key']
+
+        # 4. Validación Estricta
+        # Aquí es donde tu test lanzará el ValidationError si faltan role o content
+        validated_msg = SessionMessage(**session_payload)
+
+        # 5. Persistencia en Firestore
+        if db:
+            session_ref = db.collection('sessions').document(cid)
+            
+            await session_ref.set({
+                'last_activity': firestore.SERVER_TIMESTAMP,
+                'type': 'group' if cid.startswith('-') else 'private' 
+            }, merge=True)
+
+            doc_data = validated_msg.model_dump(exclude_none=True)
+            doc_data['timestamp'] = firestore.SERVER_TIMESTAMP
+
+            msg_id_raw = validated_msg.message_id
+            msg_id_str = str(msg_id_raw) if msg_id_raw else None
+
+            try:
+                if msg_id_str:
+                    await session_ref.collection('messages').document(msg_id_str).set(doc_data)
+                else:
+                    await session_ref.collection('messages').add(doc_data)
+            except Exception as e:
+                logger.warning(f"⚠️ Error guardando mensaje en Firestore: {e}")
+
+        return validated_msg
 
     @classmethod
     def build_log_content(cls, sensory_payload: dict | None, sanitized_input: str | None, message) -> tuple[str, str]:
@@ -137,7 +172,14 @@ class SessionManager:
                     "message_id": data.get("message_id"),
                     "role": data.get("role"),
                     "name": data.get("name"),
-                    "content": data.get("content")
+                    "content": data.get("content"),
+                    # propagate RBAC metadata if present so callers can make
+                    # trust decisions or display ownership info.
+                    "metadata": {
+                        "owner_id": data.get("owner_id"),
+                        "visibility": data.get("visibility"),
+                        "domain": data.get("domain"),
+                    }
                 })
             
             return messages[::-1]

@@ -69,6 +69,12 @@ docker-compose logs -f lifeos
 ```
 lifeOS/
 ├── data/                  # Qdrant, sessions.json
+
+
+**Legacy data cleanup:** after the schema change all Firestore session
+messages now require RBAC metadata. Run `python scripts/wipe_legacy_sessions.py`
+to purge any existing non‑compliant documents before going live.
+
 ├── docs/                  # Vision, PRD, ADRs
 ├── docker-compose.yml
 ├── litellm_config.yaml
