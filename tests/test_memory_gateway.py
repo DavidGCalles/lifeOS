@@ -91,3 +91,56 @@ async def test_search_semantic_archive_delegates(monkeypatch):
     monkeypatch.setattr(MemoryGateway, "_query_vector", classmethod(fake))
     result = await MemoryGateway.search_semantic_archive(user_ctx=user, query="abc", limit=2)
     assert result == [dummy_item]
+
+@pytest.mark.asyncio
+async def test_add_working_memory_and_metadata(monkeypatch):
+    """Writing through the gateway should call the SessionManager helper."""
+    calls = {}
+    async def fake_add(chat_id, message_data):
+        calls['chat_id'] = chat_id
+        calls['message_data'] = message_data
+        return "ok"
+    monkeypatch.setattr(SessionManager, "add_message", fake_add)
+
+    user = UserContext(telegram_id="owner1", name="O", role=UserRole.EXTERNAL)
+    msg = {"role": "user", "content": "hi"}
+    result = await MemoryGateway.add_working_memory(user, 123, msg)
+    assert result == "ok"
+    assert calls['chat_id'] == 123
+    # owner_id should be injected if missing
+    assert calls['message_data']['metadata']['owner_id'] == "owner1"
+
+    with pytest.raises(ValueError):
+        await MemoryGateway.add_working_memory(None, 1, {})
+
+@pytest.mark.asyncio
+async def test_save_and_delete_semantic_memory(monkeypatch):
+    """Ensure semantic writes go to the VectorMemoryManager and require context."""
+    saved = {}
+    async def fake_add(self, item):
+        saved['item'] = item
+        return "mid"
+    async def fake_del(self, mem_id):
+        saved['deleted'] = mem_id
+    monkeypatch.setattr(VectorMemoryManager, "add_memory", fake_add)
+    monkeypatch.setattr(VectorMemoryManager, "delete_memory", fake_del)
+
+    user = UserContext(telegram_id="u1", name="User", role=UserRole.ADMIN)
+    from src.schemas.memory import EpisodicMemoryItem, EpisodicMemoryMetadata
+    item = EpisodicMemoryItem(
+        content="something",
+        metadata=EpisodicMemoryMetadata(owner_id="", category=MemoryCategory.FAMILY, type=MemoryType.REFLECTION, source=MemorySource.AGENT_REFLECTION),
+    )
+    mid = await MemoryGateway.save_semantic_memory(user, item)
+    assert mid == "mid"
+    assert saved['item'] is item
+    # the gateway should fill missing owner_id
+    assert item.metadata.owner_id == "u1"
+
+    await MemoryGateway.delete_semantic_memory(user, "abc")
+    assert saved['deleted'] == "abc"
+
+    with pytest.raises(ValueError):
+        await MemoryGateway.save_semantic_memory(None, item)
+    with pytest.raises(ValueError):
+        await MemoryGateway.delete_semantic_memory(None, "x")

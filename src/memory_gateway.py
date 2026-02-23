@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import time
 from typing import Any, Dict, List, Optional, Union
 
 from google.cloud.firestore import Query
@@ -8,6 +10,8 @@ from src.identity_manager import UserContext, UserRole
 from src.schemas.memory import MemoryVisibility, EpisodicMemoryItem
 from src.utils.session_manager import SessionManager
 from src.memory_manager import VectorMemoryManager
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryGateway:
@@ -55,7 +59,9 @@ class MemoryGateway:
             )
             conditions.append(family_cond)
 
-        return models.Filter(should=conditions)
+        filter_obj = models.Filter(should=conditions)
+        logger.debug("🔐 RBAC Filter built for user %s (role=%s) with %d conditions", user_ctx.telegram_id, user_ctx.role, len(conditions))
+        return filter_obj
 
     @classmethod
     async def _query_vector(
@@ -71,9 +77,21 @@ class MemoryGateway:
         supply a pre-built ``models.Filter`` so that ownership/visibility
         restrictions cannot be bypassed.
         """
-        manager = VectorMemoryManager(domain=domain)
-        rbac = cls._build_rbac_filter(user_ctx)
-        return await manager.search_memory(query=query, filters=rbac, limit=limit)
+        start_time = time.time()
+        logger.info("🔍 Vector search initiated: query='%s' domain=%s limit=%d user=%s", query[:50], domain or 'episodic', limit, user_ctx.telegram_id)
+        
+        try:
+            manager = VectorMemoryManager(domain=domain)
+            rbac = cls._build_rbac_filter(user_ctx)
+            results = await manager.search_memory(query=query, filters=rbac, limit=limit)
+            
+            elapsed = time.time() - start_time
+            logger.info("✅ Vector search completed: found %d results in %.2fs", len(results), elapsed)
+            return results
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error("❌ Vector search failed after %.2fs: %s", elapsed, str(e), exc_info=True)
+            raise
 
     @classmethod
     async def _query_session(
@@ -88,8 +106,12 @@ class MemoryGateway:
         deduplicate them rather than falling back to a single unfiltered scan.
         This satisfies the requirement of "injecting Firestore where clauses."  
         """
+        start_time = time.time()
+        logger.info("📋 Session query initiated: chat_id=%s user=%s limit=%d role=%s", chat_id, user_ctx.telegram_id, limit, user_ctx.role)
+        
         db = SessionManager._get_db()
         if not db:
+            logger.warning("⚠️ Firestore client unavailable for session query (chat_id=%s)", chat_id)
             return []
 
         cid = str(chat_id)
@@ -113,11 +135,14 @@ class MemoryGateway:
 
         messages: List[Dict[str, Any]] = []
         seen_ids: set = set()
+        query_count = 0
         for q in queries:
+            query_count += 1
             async for doc in q.limit(limit).stream():
                 data = doc.to_dict()
                 mid = str(data.get("message_id", ""))
                 if mid in seen_ids:
+                    logger.debug("🔄 Duplicate message suppressed: %s", mid)
                     continue
                 seen_ids.add(mid)
 
@@ -140,7 +165,10 @@ class MemoryGateway:
 
         # The original SessionManager returned results oldest-first by
         # reversing the list; we do the same here for compatibility.
-        return messages[::-1]
+        result = messages[::-1]
+        elapsed = time.time() - start_time
+        logger.info("✅ Session query completed: %d messages from %d queries in %.2fs (chat_id=%s)", len(result), query_count, elapsed, chat_id)
+        return result
 
 
     # ------------------------------------------------------------------
@@ -160,7 +188,9 @@ class MemoryGateway:
         validates the context and delegates to ``_query_session``.
         """
         if not user_ctx:
+            logger.error("🚨 SECURITY: fetch_working_memory called without UserContext")
             raise ValueError("UserContext must be provided for every read operation")
+        logger.debug("📌 fetch_working_memory entry point (user=%s chat_id=%s)", user_ctx.telegram_id, chat_id)
         return await cls._query_session(chat_id, user_ctx, limit=limit)
 
     @classmethod
@@ -177,5 +207,85 @@ class MemoryGateway:
         mix results from Firestore.
         """
         if not user_ctx:
+            logger.error("🚨 SECURITY: search_semantic_archive called without UserContext")
             raise ValueError("UserContext must be provided for every read operation")
+        logger.debug("📌 search_semantic_archive entry point (user=%s query='%s')", user_ctx.telegram_id, query[:40])
         return await cls._query_vector(query, user_ctx, domain=domain, limit=limit)
+
+    # ------------------------------------------------------------------
+    # Write helpers
+    # ------------------------------------------------------------------
+
+    @classmethod
+    async def add_working_memory(
+        cls,
+        user_ctx: UserContext,
+        chat_id: Union[str, int],
+        message_data: Dict[str, Any],
+    ) -> Any:
+        """Persist a session message through the gateway.
+
+        This is largely a pass-through to :class:`SessionManager`, but we
+        require a valid ``UserContext`` so that callers cannot write on behalf
+        of another user.  The caller is still responsible for building a
+        schema-compliant ``message_data`` dict (usually via
+        ``SessionManager.build_log_content``).
+        """
+        if not user_ctx:
+            raise ValueError("UserContext must be provided for every write operation")
+        # inject metadata ownership if missing
+        if "metadata" not in message_data:
+            message_data["metadata"] = {}
+        message_data.setdefault("metadata", {})
+        message_data["metadata"].setdefault("owner_id", user_ctx.telegram_id)
+        # Delegate to legacy manager
+        return await SessionManager.add_message(chat_id, message_data)
+
+    @classmethod
+    async def get_message_metadata(
+        cls, chat_id: Union[str, int], message_id: Union[str, int]
+    ) -> dict:
+        """Proxy for ``SessionManager.get_message_metadata``.
+
+        Used primarily by the Telegram reply-detection logic in ``main.py``.
+        """
+        return await SessionManager.get_message_metadata(chat_id, message_id)
+
+    # utility that simply forwards to the legacy helper so callers don’t need
+    # to import ``SessionManager`` directly.
+    @classmethod
+    def build_log_content(
+        cls, sensory_payload: Optional[Dict[str, Any]], sanitized_input: Optional[str], message: Any
+    ) -> tuple[str, str]:
+        """Convenience wrapper around ``SessionManager.build_log_content``."""
+        return SessionManager.build_log_content(sensory_payload, sanitized_input, message)
+
+    @classmethod
+    async def save_semantic_memory(
+        cls, user_ctx: UserContext, item: EpisodicMemoryItem
+    ) -> str:
+        """Store an episodic memory through the gateway.
+
+        Currently this simply delegates to :class:`VectorMemoryManager`, but the
+        gateway could later inject RBAC-related metadata or routing logic.
+        """
+        if not user_ctx:
+            raise ValueError("UserContext must be provided for every write operation")
+        # ensure owner id matches
+        if not item.metadata.owner_id:
+            item.metadata.owner_id = user_ctx.telegram_id
+        manager = VectorMemoryManager(domain=item.metadata.domain)
+        return await manager.add_memory(item)
+
+    @classmethod
+    async def delete_semantic_memory(
+        cls, user_ctx: UserContext, memory_id: str, domain: Optional[str] = None
+    ) -> None:
+        """Delete a memory item by id through the gateway.
+
+        A simple wrapper that could someday enforce ownership/visibility.
+        """
+        if not user_ctx:
+            raise ValueError("UserContext must be provided for every write operation")
+        manager = VectorMemoryManager(domain=domain)
+        await manager.delete_memory(memory_id)

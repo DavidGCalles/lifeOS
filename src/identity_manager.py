@@ -75,14 +75,22 @@ class IdentityManager:
     @classmethod
     async def get_user(cls, telegram_id: int | str) -> UserContext:
         tid_str = str(telegram_id)
+        logger.debug("🔍 User lookup initiated: telegram_id=%s", tid_str)
         
         # 0. PASE VIP DE EMERGENCIA
         env_admin_id = os.getenv("ADMIN_USER_ID")
         if env_admin_id and tid_str == str(env_admin_id):
-            pass 
+            logger.info("🆔 Emergency ADMIN access granted via environment variable for user %s", tid_str)
+            return UserContext(
+                telegram_id=tid_str,
+                name="Admin (Rescue)",
+                role=UserRole.ADMIN,
+                description="Emergency Access via Environment Variable"
+            )
 
         # 1. INTENTO FIRESTORE (ASYNC)
         if cls._USE_FIRESTORE:
+            logger.debug("📡 Attempting Firestore lookup for user %s", tid_str)
             db = cls._get_firestore_client()
             if db:
                 try:
@@ -91,38 +99,38 @@ class IdentityManager:
                         data = doc.to_dict()
                         # Si el campo role no existe o es antiguo, fallback seguro a PENDING
                         role_str = data.get("role", "pending").lower()
-                        return UserContext(
+                        user_ctx = UserContext(
                             telegram_id=tid_str,
                             name=data.get("name", "Unknown"),
                             role=UserRole(role_str), 
                             description=data.get("description"),
                             calendar_id=data.get("calendar_id")
                         )
+                        logger.info("✅ User loaded from Firestore: id=%s name=%s role=%s", tid_str, user_ctx.name, user_ctx.role)
+                        return user_ctx
+                    else:
+                        logger.debug("📭 User not found in Firestore: %s", tid_str)
                 except Exception as e:
-                    logger.error(f"⚠️ Fallo lectura Firestore: {e}")
+                    logger.warning("⚠️ Firestore lookup error for %s: %s", tid_str, str(e))
 
-        # 2. FALLBACK LOCAL / VIP MANUAL
-        if env_admin_id and tid_str == str(env_admin_id):
-             return UserContext(
-                telegram_id=tid_str,
-                name="Admin (Rescue)",
-                role=UserRole.ADMIN,
-                description="Emergency Access via Environment Variable"
-            )
-
+        # 2. FALLBACK LOCAL
+        logger.debug("📂 Attempting local JSON lookup for user %s", tid_str)
         cls._load_local_users()
         data = cls._users_db.get(tid_str)
         if data:
-            return UserContext(
+            user_ctx = UserContext(
                 telegram_id=tid_str,
                 name=data.get("name"),
                 role=UserRole(data.get("role", "guest").lower()),
                 description=data.get("description"),
                 calendar_id=data.get("calendar_id")
             )
+            logger.info("✅ User loaded from local config: id=%s name=%s role=%s", tid_str, user_ctx.name, user_ctx.role)
+            return user_ctx
 
         # 3. STRANGER -> PENDING (En lugar de Guest)
         # Devolvemos un contexto PENDING para que el sistema decida qué hacer (bloquear o notificar)
+        logger.warning("⚠️ User not found in any database: telegram_id=%s, assigning PENDING role", tid_str)
         return UserContext(
             telegram_id=tid_str,
             name="Stranger",
@@ -135,10 +143,14 @@ class IdentityManager:
         """
         Registra un usuario nuevo en Firestore usando estrictamente el modelo UserContext.
         """
-        if not cls._USE_FIRESTORE: return False
+        if not cls._USE_FIRESTORE:
+            logger.warning("⚠️ Firestore not enabled; user registration skipped for %s", user.telegram_id)
+            return False
         
         db = cls._get_firestore_client()
-        if not db: return False
+        if not db:
+            logger.error("❌ Firestore client unavailable; cannot register user %s", user.telegram_id)
+            return False
 
         try:
             # Serialización estricta del modelo Pydantic
@@ -147,29 +159,38 @@ class IdentityManager:
             
             # Solo añadimos metadata de sistema necesaria para ordenación
             user_data['first_seen'] = firestore.SERVER_TIMESTAMP
+            
+            logger.info("📝 Registering user: id=%s name=%s role=%s", user.telegram_id, user.name, user.role)
 
             await db.collection('users').document(user.telegram_id).set(user_data, merge=True)
+            logger.info("✅ User registered successfully: id=%s", user.telegram_id)
             return True
         except Exception as e:
-            logger.error(f"❌ Error registering user: {e}")
+            logger.error("❌ Error registering user %s: %s", user.telegram_id, str(e), exc_info=True)
             return False
 
     @classmethod
     async def update_user(cls, telegram_id: int | str, data: dict) -> bool:
         tid_str = str(telegram_id)
         
+        logger.debug("🔄 User update initiated: telegram_id=%s fields=%s", tid_str, list(data.keys()))
+        
         if not cls._USE_FIRESTORE:
+            logger.warning("⚠️ Firestore not enabled; user update skipped for %s", tid_str)
             return False
 
         db = cls._get_firestore_client()
-        if not db: return False
+        if not db:
+            logger.error("❌ Firestore client unavailable; cannot update user %s", tid_str)
+            return False
 
         try:
-            logger.info(f"💾 Actualizando usuario {tid_str} con: {data}")
+            logger.info("💾 Updating user %s with fields: %s", tid_str, list(data.keys()))
             await db.collection('users').document(tid_str).set(data, merge=True)
+            logger.info("✅ User updated successfully: id=%s", tid_str)
             return True
         except Exception as e:
-            logger.error(f"❌ Error escribiendo en Firestore: {e}")
+            logger.error("❌ Error updating user %s: %s", tid_str, str(e), exc_info=True)
             return False
 
     @classmethod
@@ -177,6 +198,8 @@ class IdentityManager:
         """
         Intenta encontrar un UserContext por nombre. Prioriza Firestore.
         """
+        logger.debug("🔍 User lookup by name: name='%s'", name)
+        
         # Normalizar nombre para búsqueda case-insensitive
         normalized_name = name.strip().lower()
 

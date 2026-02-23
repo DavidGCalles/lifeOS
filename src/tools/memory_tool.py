@@ -10,8 +10,8 @@ from src.schemas.memory import (
     MemorySource,
     MemoryDomainType,
 )
-from src.memory_manager import VectorMemoryManager
 from src.identity_manager import UserContext
+from src.memory_gateway import MemoryGateway
 from src.logging_config import get_logger
 logger = get_logger(__name__) 
 
@@ -55,11 +55,8 @@ class RememberTool(BaseTool):
         author_name = self._current_user.name if self._current_user else "unknown_system"
         owner_id = self._current_user.telegram_id if self._current_user else "unknown"
         try:
-            manager = VectorMemoryManager()
             logger.info("RememberTool invoked by %s. Adding memory (len=%d)...", author_name, len(content))
-            
-            # Construimos el objeto estricto
-            # Nota: Pydantic v2 valida los enums automáticamente
+
             memory = EpisodicMemoryItem(
                 content=content,
                 metadata=EpisodicMemoryMetadata(
@@ -73,8 +70,9 @@ class RememberTool(BaseTool):
                 ),
                 created_by=author_name 
             )
-            
-            mem_id = await manager.add_memory(memory)
+
+            # delegate through gateway so RBAC metadata and context propagation
+            mem_id = await MemoryGateway.save_semantic_memory(self._current_user, memory)
             logger.info("Memory saved: id=%s by=%s", mem_id, author_name)
             return f"✅ Memory saved successfully with ID: {mem_id}"
             
@@ -92,27 +90,33 @@ class RecallTool(BaseTool):
         "or projects. Useful when you need to answer 'What did we say about X?'."
     )
     args_schema: type[BaseModel] = RecallInput
+    _current_user: UserContext | None = None
 
+    def set_context(self, user: UserContext):
+        self._current_user = user
     async def _run(self, query: str, category: str | None = None) -> str:
         try:
-            manager = VectorMemoryManager(domain=MemoryDomainType.EPISODIC)
             logger.debug("RecallTool query=%s category=%s", query, category)
-            
-            filters = {}
-            if category:
-                filters["category"] = category
+            # call gateway instead of manager; include user context for RBAC
+            results = await MemoryGateway.search_semantic_archive(
+                user_ctx=self._current_user,
+                query=query,
+                limit=5,
+                domain=MemoryDomainType.EPISODIC,
+            )
 
-            results = await manager.search_memory(query=query, filters=filters if filters else None)
-            
+            # apply category filtering locally if requested
+            if category:
+                results = [r for r in results if r.metadata.category.value == category]
+
             if not results:
                 logger.info("RecallTool: no results for query=%s", query)
                 return "No relevant memories found."
-            
-            # List comprehension moderna y f-strings
+
             formatted_output = "Found relevant memories:\n" + "\n".join(
                 [f"- [{item.created_at}] ({item.metadata.type}): {item.content}" for item in results]
             )
-            
+
             logger.info("RecallTool: found %d results for query=%s", len(results), query)
             return formatted_output
 
@@ -131,27 +135,31 @@ class ForgetTool(BaseTool):
         "and deletes it."
     )
     args_schema: type[BaseModel] = ForgetInput
+    _current_user: UserContext | None = None
+
+    def set_context(self, user: UserContext):
+        self._current_user = user
 
     async def _run(self, query: str) -> str:
         try:
-            manager = VectorMemoryManager(domain=MemoryDomainType.EPISODIC)
             logger.info("ForgetTool invoked. Query=%s", query)
-            
-            # 1. Primero buscamos qué vamos a borrar (para confirmar)
-            # Buscamos el top 1 más similar
-            results = await manager.search_memory(query=query, limit=1)
-            
+
+            # use gateway to search and delete
+            results = await MemoryGateway.search_semantic_archive(
+                user_ctx=self._current_user,
+                query=query,
+                limit=1,
+                domain=MemoryDomainType.EPISODIC,
+            )
+
             if not results:
                 logger.info("ForgetTool: no match for query=%s", query)
                 return f"❌ Could not find any memory resembling '{query}' to delete."
-            
+
             target_memory = results[0]
-            
-            # 2. Borramos usando el ID que hemos recuperado
-            # Necesitas añadir este método .delete() al Manager (ver abajo)
-            await manager.delete_memory(target_memory.id)
+            await MemoryGateway.delete_semantic_memory(self._current_user, target_memory.id)
             logger.info("ForgetTool: deleted memory id=%s", target_memory.id)
-            
+
             return (
                 f"🗑️ DELETED Memory ID {target_memory.id}\n"
                 f"Content: '{target_memory.content}'\n"

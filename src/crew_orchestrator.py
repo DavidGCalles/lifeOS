@@ -8,16 +8,16 @@ from typing import Any
 from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
-from src.utils.session_manager import SessionManager
 from src.identity_manager import UserContext 
+from src.memory_gateway import MemoryGateway
 
 logger = logging.getLogger(__name__)
 
 class CrewOrchestrator:
-    def __init__(self, session_manager: SessionManager):
+    def __init__(self, memory_gateway: MemoryGateway):
         self.agents = LifeOSAgents()
         self.tasks = LifeOSTasks()
-        self.session_manager = session_manager
+        self.memory_gateway = memory_gateway
 
     def _format_identity_context(self, user: UserContext | None) -> str:
         if not user: return ""
@@ -55,6 +55,8 @@ class CrewOrchestrator:
         """
         Enruta la petición haciendo Hot-Swap de modelo si es necesario.
         """
+        logger.info("🚦 Routing initiated: user=%s message_type=%s", user.telegram_id if user else "unknown", type(user_message).__name__)
+        
         dispatcher = self.agents.create_agent('dispatcher')
         
         # 1. DETECCIÓN MULTIMODAL
@@ -73,6 +75,7 @@ class CrewOrchestrator:
                     user_message=user_message, 
                     context=routing_context
                 )
+                logger.debug("📤 Dispatcher raw response received (len=%d)", len(str(raw_response)))
                 
                 # 2. PARSING JSON ESTRICTO
                 decision_data = self._clean_and_extract_json(raw_response)
@@ -112,30 +115,43 @@ class CrewOrchestrator:
                               chat_id: int | None = None, 
                               user: UserContext | None = None, 
                               extra_context: str | None = None) -> Any:
-        # ... (sin cambios en execute_request) ...
         yaml_key = target_agent_key.lower()
-        logger.info(f"🚀 Executing '{yaml_key}'...")
+        logger.info("🚀 Executing '%s' for user=%s chat_id=%s", yaml_key, user.telegram_id if user else "unknown", chat_id)
 
         agent = self.agents.create_agent(yaml_key) or self.agents.create_agent('jane')
+        if agent is None:
+            logger.error("❌ Agent '%s' not found, fallback failed. Returning error.", yaml_key)
+            return "Agent not available"
 
         context_parts: list[str] = []
-        if extra_context: context_parts.append(f"🔥 PRIORITY CONTEXT: {extra_context}")
-        if user: context_parts.append(self._format_identity_context(user))
+        if extra_context:
+            context_parts.append(f"🔥 PRIORITY CONTEXT: {extra_context}")
+            logger.debug("📌 Extra context injected (len=%d)", len(extra_context))
+        if user:
+            context_parts.append(self._format_identity_context(user))
         
-        if chat_id:
-            history = await self.session_manager.get_context(chat_id)
+        if chat_id and user:
+            logger.debug("📚 Fetching working memory for chat_id=%s", chat_id)
+            # retrieve only messages visible to this user via gateway
+            history = await self.memory_gateway.fetch_working_memory(user, chat_id)
             if history:
+                logger.info("📜 Chat history loaded: %d messages", len(history))
                 history_str = "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history])
                 context_parts.append(f"📜 CHAT HISTORY:\n{history_str}")
+            else:
+                logger.debug("📜 No chat history available")
 
         full_context = "\n\n".join(context_parts)
 
         if getattr(agent, "is_fast_agent", False):
+            logger.debug("⚡ Fast Agent execution path")
             return await agent.execute(user_message=user_message, context=full_context)
         else:
+            logger.debug("🔧 Crew Agent execution path (slow)")
             if isinstance(user_message, list):
                 text_content = next((x['text'] for x in user_message if x['type'] == 'text'), "Image Content")
                 user_message_str = f"[User sent an image]: {text_content}"
+                logger.debug("📸 Multimodal message detected, extracted text: %s", text_content[:50])
             else:
                 user_message_str = user_message
             

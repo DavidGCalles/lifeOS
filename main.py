@@ -14,7 +14,7 @@ import asyncio
 
 from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
-from src.utils.session_manager import SessionManager
+from src.memory_gateway import MemoryGateway
 from src.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
 from src.logging_config import configure_logging, install_grpc_noise_filter
@@ -33,8 +33,9 @@ RUN_MODE = os.getenv('RUN_MODE', 'polling').lower()
 PORT = int(os.getenv('PORT', '8080'))
 ADMIN_USER_ID = os.getenv('ADMIN_USER_ID')
 
-session_manager = SessionManager()
-orchestrator = CrewOrchestrator(session_manager=session_manager)
+# legacy SessionManager has been deprecated; use MemoryGateway instead
+memory_gateway = MemoryGateway()
+orchestrator = CrewOrchestrator(memory_gateway=memory_gateway)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -121,6 +122,9 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
 
+    # fetch identity early so we can pass it to the gateway when needed
+    current_user = await IdentityManager.get_user(user_id)
+
     # 1. SENSORY CORTEX PROCESSING (run before Social Shield to ensure payload/logging is set)
     sensory_payload = await SensoryCortex().process(update)
 
@@ -132,9 +136,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         chat_type = update.effective_chat.type
         if chat_type in ['group', 'supergroup']:
             try:
-                log_content, input_type = SessionManager.build_log_content(sensory_payload, sanitized_input, update.message)
+                log_content, input_type = memory_gateway.build_log_content(sensory_payload, sanitized_input, update.message)
                 name = getattr(update.effective_user, 'first_name', None) or getattr(update.effective_user, 'username', 'Unknown')
-                await SessionManager.add_message(
+                # write via gateway so user context travels
+                await memory_gateway.add_working_memory(
+                    current_user,
                     chat_id,
                     {
                         "role": "user",
@@ -218,7 +224,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         if update.message and update.message.reply_to_message:
             parent_id = update.message.reply_to_message.message_id
-            parent_meta = await SessionManager.get_message_metadata(chat_id, parent_id)
+            parent_meta = await memory_gateway.get_message_metadata(chat_id, parent_id)
             if parent_meta and parent_meta.get('agent_key'):
                 target_agent = parent_meta['agent_key']
                 bypass_context = f"User replying to: '{parent_meta.get('content', '...')}'."
@@ -228,10 +234,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         
         # LOGGING (SANITIZED)
         # Use shared builder to produce consistent log content and input_type
-        log_content, input_type = SessionManager.build_log_content(sensory_payload, sanitized_input, update.message)
+        log_content, input_type = memory_gateway.build_log_content(sensory_payload, sanitized_input, update.message)
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         if update.message:
-            await SessionManager.add_message(
+            await memory_gateway.add_working_memory(
+                current_user,
                 chat_id,
                 {
                     "role": current_user.role.value,
@@ -257,7 +264,8 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         sent_msg = await send_smart_response(update, f"🤖 *[{target_agent}]*\n\n{respuesta_str}")
 
         if sent_msg:
-            await SessionManager.add_message(
+            await memory_gateway.add_working_memory(
+                current_user,
                 chat_id,
                 {
                     "role": "assistant", 

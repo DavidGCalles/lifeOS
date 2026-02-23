@@ -169,20 +169,29 @@ class VectorMemoryManager:
         """
         from src.schemas.memory import BaseMemoryMetadata
 
+        logger.debug("💾 Adding memory item: owner=%s visibility=%s domain=%s", item.metadata.owner_id, item.metadata.visibility, item.metadata.domain)
+
         # validate the metadata portion against the universal contract
         metadata_dict = item.metadata.model_dump()
         # this will ensure required base fields exist and types are correct.
         # Any additional domain‑specific keys (category/type/etc.) are allowed
         # and will simply be ignored by BaseMemoryMetadata.
-        BaseMemoryMetadata(**metadata_dict)
+        try:
+            BaseMemoryMetadata(**metadata_dict)
+        except Exception as e:
+            logger.error("❌ Memory metadata validation failed: %s", str(e), exc_info=True)
+            raise
 
         if self._client is None:
+            logger.info("🔌 Initializing Qdrant client for memory persistence...")
             await self._initialize_client()
         # just make sure our specific collection exists in case someone passed
         # a custom name via the constructor
         await self._ensure_collection(self._collection_name)
 
+        logger.debug("🧠 Generating embedding for memory item (len=%d)", len(item.content))
         vector = await self._get_embedding(item.content)
+        logger.debug("✅ Embedding generated (dim=%d)", len(vector))
 
         # verify domain-routing consistency (item metadata.domain -> collection)
         desired = self.DOMAIN_COLLECTION_MAP.get(str(item.metadata.domain))
@@ -196,6 +205,7 @@ class VectorMemoryManager:
             self._collection_name = desired
 
         try:
+            logger.debug("🚀 Upserting point to collection '%s'", self._collection_name)
             await self._client.upsert(
                 collection_name=self._collection_name,
                 points=[
@@ -212,10 +222,10 @@ class VectorMemoryManager:
                 ],
                 wait=True,
             )
-            logger.info(f"Successfully added memory {item.id}")
+            logger.info("✅ Memory persisted: id=%s owner=%s collection=%s", item.id, item.metadata.owner_id, self._collection_name)
             return item.id
         except Exception as e:
-            logger.error(f"Error saving memory {item.id}: {e}", exc_info=True)
+            logger.error("❌ Error persisting memory %s: %s", item.id, str(e), exc_info=True)
             raise e
 
     async def search_memory(
@@ -234,9 +244,13 @@ class VectorMemoryManager:
         required; this is how :class:`MemoryGateway` enforces visibility
         rules.
         """
+        logger.debug("🔎 Semantic search starting: query='%s' limit=%d collection=%s filters=%s", query[:50], limit, self._collection_name, type(filters).__name__)
+        
         if self._client is None:
             await self._initialize_client()
         await self._ensure_collection(self._collection_name)
+        
+        logger.debug("🧠 Generating query embedding...")
         query_vector = await self._get_embedding(query)
         
         # handle the two supported filter formats
@@ -264,6 +278,7 @@ class VectorMemoryManager:
                     qdrant_filter = None
 
         try:
+            logger.debug("🚀 Executing semantic query against collection '%s' with %s", self._collection_name, "filter" if qdrant_filter else "no filter")
             result_obj = await self._client.query_points(
                 collection_name=self._collection_name,
                 query=query_vector,
@@ -273,7 +288,7 @@ class VectorMemoryManager:
             
             # FIX ADR-007: Ahora devuelve un objeto wrapper, extraemos la lista de puntos
             results = result_obj.points
-            
+            logger.info("✅ Semantic search completed: found %d results from '%s'", len(results), self._collection_name)
             found_items = []
             for point in results:
                 metadata_payload = {k: v for k, v in point.payload.items() if k not in ["content", "created_at"]}
