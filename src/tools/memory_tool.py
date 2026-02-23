@@ -3,11 +3,12 @@ from pydantic import BaseModel, Field
 
 # Importamos nuestros Schemas y el Manager
 from src.schemas.memory import (
-    EpisodicMemoryItem, 
-    EpisodicMemoryMetadata, 
-    MemoryCategory, 
-    MemoryType, 
-    MemorySource
+    EpisodicMemoryItem,
+    EpisodicMemoryMetadata,
+    MemoryCategory,
+    MemoryType,
+    MemorySource,
+    MemoryDomainType,
 )
 from src.memory_manager import VectorMemoryManager
 from src.identity_manager import UserContext
@@ -94,7 +95,7 @@ class RecallTool(BaseTool):
 
     async def _run(self, query: str, category: str | None = None) -> str:
         try:
-            manager = VectorMemoryManager()
+            manager = VectorMemoryManager(domain=MemoryDomainType.EPISODIC)
             logger.debug("RecallTool query=%s category=%s", query, category)
             
             filters = {}
@@ -133,7 +134,7 @@ class ForgetTool(BaseTool):
 
     async def _run(self, query: str) -> str:
         try:
-            manager = VectorMemoryManager()
+            manager = VectorMemoryManager(domain=MemoryDomainType.EPISODIC)
             logger.info("ForgetTool invoked. Query=%s", query)
             
             # 1. Primero buscamos qué vamos a borrar (para confirmar)
