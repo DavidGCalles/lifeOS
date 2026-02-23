@@ -172,3 +172,7 @@ class CrewOrchestrator:
             task2 = self.tasks.response_task(agent)
             crew = Crew(agents=[agent], tasks=[task1, task2], verbose=True)
             return await asyncio.to_thread(crew.kickoff)
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error("❌ Error during agent execution after %.2fs: %s", elapsed, str(e), exc_info=True)
+            return f"Error executing agent: {str(e)}"
