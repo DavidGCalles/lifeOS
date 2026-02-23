@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+import time
 import litellm  # <--- IMPORTANTE: Importamos la librería base
 from typing import Any
 from litellm import Router
@@ -77,4 +78,17 @@ class LiteLLMRouter:
     async def acompletion(self, **kwargs) -> Any:
         if not self._router:
             raise RuntimeError("LiteLLMRouter not initialized.")
-        return await self._router.acompletion(**kwargs)
+        
+        model = kwargs.get("model", "unknown")
+        start_time = time.time()
+        logger.info("🤖 LLM completion starting: model=%s", model)
+        
+        try:
+            result = await self._router.acompletion(**kwargs)
+            elapsed = time.time() - start_time
+            logger.info("✅ LLM completion done: model=%s elapsed=%.2fs", model, elapsed)
+            return result
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error("❌ LLM completion failed after %.2fs: %s", elapsed, str(e), exc_info=True)
+            raise

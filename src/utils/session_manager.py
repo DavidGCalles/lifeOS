@@ -144,7 +144,7 @@ class SessionManager:
         return log_content, input_type
 
     @classmethod
-    async def get_context(cls, chat_id: int | str, limit: int = 15) -> list[dict[str, Any]]:
+    async def get_context(cls, chat_id: int | str, limit: int = 5) -> list[dict[str, Any]]:
         """
         Recupera historial reciente (Async).
         """

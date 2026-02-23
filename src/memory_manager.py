@@ -140,6 +140,10 @@ class VectorMemoryManager:
         Generates an embedding for the given text using the LiteLLM proxy.
         Uses the 'text-embedding' model configured in LiteLLM which routes to the proper provider.
         """
+        start_time = time.time()
+        text_preview = text[:50] if isinstance(text, str) else str(text)[:50]
+        logger.debug("🧵 Embedding generation starting: text_len=%d", len(text) if isinstance(text, str) else len(str(text)))
+        
         litellm_url = os.getenv("LITELLM_URL", "http://localhost:4000")
         if not litellm_url.startswith("http"):
             litellm_url = f"http://{litellm_url}"
@@ -154,9 +158,13 @@ class VectorMemoryManager:
                 model="text-embedding",
                 input=[text]
             )
-            return response.data[0].embedding
+            embedding = response.data[0].embedding
+            elapsed = time.time() - start_time
+            logger.debug("✅ Embedding generated: dim=%d elapsed=%.2fs", len(embedding), elapsed)
+            return embedding
         except Exception as e:
-            logger.error(f"Error getting embedding from LiteLLM proxy: {e}", exc_info=True)
+            elapsed = time.time() - start_time
+            logger.error("❌ Embedding generation failed after %.2fs: %s", elapsed, str(e), exc_info=True)
             raise
 
     async def add_memory(self, item: EpisodicMemoryItem) -> str:

@@ -98,7 +98,7 @@ class MemoryGateway:
         cls,
         chat_id: Union[str, int],
         user_ctx: UserContext,
-        limit: int = 15,
+        limit: int = 5,
     ) -> List[Dict[str, Any]]:
         """Retrieve session messages that the caller is allowed to see.
 
@@ -180,7 +180,7 @@ class MemoryGateway:
         cls,
         user_ctx: UserContext,
         chat_id: Union[str, int],
-        limit: int = 15,
+        limit: int = 5,
     ) -> List[Dict[str, Any]]:
         """Return Firestore session messages visible to ``user_ctx``.
 

@@ -106,6 +106,9 @@ async def vision_extract_text(images: List[str], model: str = "crewai-proxy") ->
     if not images:
         raise ValueError("images list cannot be empty")
     
+    start_time = time.time()
+    logger.info("👁️ Vision analysis starting: images=%d model=%s", len(images), model)
+    
     system_prompt = _get_vision_system_prompt()
     content = _prepare_vision_content(images)
     
@@ -122,11 +125,13 @@ async def vision_extract_text(images: List[str], model: str = "crewai-proxy") ->
         )
         
         extracted_text = response.choices[0].message.content
-        logger.info(f"Successfully extracted text from {len(images)} image(s) using model '{model}' (Async)")
+        elapsed = time.time() - start_time
+        logger.info("✅ Vision analysis complete: images=%d result_len=%d elapsed=%.2fs", len(images), len(extracted_text) if extracted_text else 0, elapsed)
         return extracted_text or ""
         
     except Exception as e:
-        logger.error(f"LLM vision call failed: {str(e)}")
+        elapsed = time.time() - start_time
+        logger.error("❌ Vision analysis failed after %.2fs: %s", elapsed, str(e), exc_info=True)
         raise RuntimeError(f"Failed to extract text from images: {str(e)}") from e
 
 
@@ -137,6 +142,9 @@ def vision_extract_text_sync(images: List[str], model: str = "crewai-proxy") -> 
     """
     if not images:
         raise ValueError("images list cannot be empty")
+    
+    start_time = time.time()
+    logger.info("👁️ Vision analysis starting (SYNC): images=%d model=%s", len(images), model)
     
     system_prompt = _get_vision_system_prompt()
     content = _prepare_vision_content(images)
@@ -157,11 +165,13 @@ def vision_extract_text_sync(images: List[str], model: str = "crewai-proxy") -> 
         )
         
         extracted_text = response.choices[0].message.content
-        logger.info(f"Successfully extracted text from {len(images)} image(s) using model '{model}' (Sync)")
+        elapsed = time.time() - start_time
+        logger.info("✅ Vision analysis complete (SYNC): images=%d result_len=%d elapsed=%.2fs", len(images), len(extracted_text) if extracted_text else 0, elapsed)
         return extracted_text or ""
         
     except Exception as e:
-        logger.error(f"LLM vision sync call failed: {str(e)}")
+        elapsed = time.time() - start_time
+        logger.error("❌ Vision analysis failed (SYNC) after %.2fs: %s", elapsed, str(e), exc_info=True)
         raise RuntimeError(f"Failed to extract text from images (sync): {str(e)}") from e
 
 
