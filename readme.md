@@ -11,7 +11,7 @@
 - ✅ **Two-Speed / Fast Track**: Canal "rápido" para intents simples (FastTrack agents) y canal "profundo" para razonamiento costoso. Implementado en `src/fast_agents.py` y `src/crew_orchestrator.py`.
 - ✅ **Proxy de LLMs (LiteLLM)** y **Memoria Semántica (Qdrant)** funcionando (configurable en `litellm_config.yaml`).
 - 🛡️ **Social Shield (Group Middleware)**: el bot permanece silencioso en grupos salvo que se le RESPONDA o se le mencione explícitamente; los mensajes de fondo se registran pasivamente en Firestore para poder usarlos como contexto más tarde.
-- 🔒 **RBAC Gateway & Memoria Unificada**: se introdujo `MemoryGateway` que obliga a pasar un `UserContext` y aplica filtros de visibilidad a cada consulta. El esquema universal de metadatos ya se valida en `SessionManager` y todos los accesos vectoriales pasan por controles matemáticos (ADR‑012).
+- 🔒 **RBAC Gateway & Memoria Unificada**: se introdujo `MemoryGateway` que obliga a pasar un `UserContext` y aplica filtros de visibilidad a cada consulta. El esquema universal de metadatos ya se valida en `SessionManager` y todos los accesos vectoriales pasan por controles matemáticos (ADR‑012). **(ADR-012 implementado y validado: arquitectura unificada, multi-tenant, y segregación de dominios)**
 
 
 ---
@@ -113,8 +113,8 @@ graph TD
     %% --- FASE 2: INGESTA DE DOCUMENTOS ---
     subgraph Phase2 [Fase 2: Deep Ingestion Service]
         direction TB
-        FR17_Doc(<b>FR-17: Document Parser</b><br/>Scope: Sensory Cortex<br/>Input: Direct File Upload):::high
-        FR17_Drive(<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Input: Linked Resources):::high
+        FR17_Doc(<b>FR-17: Document Parser</b><br/>Scope: Sensory Cortex<br/>Input: Direct File Upload<br/>Status: Completed):::done
+        FR17_Drive(<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Input: Linked Resources<br/>Status: Completed):::done
     end
 
     ADR13_Embed(<b>ADR-013: Self-hosted Embeddings Service</b><br/>Scope: Memory management<br/>Status: Completed):::done
@@ -122,7 +122,7 @@ graph TD
     %% --- FASE 3: ARQUITECTURA DE MEMORIA ---
     subgraph Phase3 [Fase 3: Unified Memory Core]
         direction TB
-        ADR12_Interface(<b>ADR-012: Memory Abstraction Layer</b><br/>Refactors: FR-07, FR-08<br/>Target: Unified I/O (prototype ready) ):::high
+        ADR12_Interface(<b>ADR-012: Memory Abstraction Layer</b><br/>Refactors: FR-07, FR-08<br/>Status: Completed<br/>Target: Unified I/O):::done
         ADR12_RAG(<b>Context Retention Policy</b><br/>Scope: Lifecycle Management<br/>Logic: Short-Term vs Long-Term):::complex
     end
 

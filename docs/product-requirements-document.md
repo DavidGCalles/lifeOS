@@ -6,7 +6,7 @@
 | **Version** | 1.1 |
 | **Owner** | David G. Calles |
 | **Status** | Living Specification |
-| **Related Documents** | Vision Document v3.0, Architecture Decision Records (001-011) |
+| **Related Documents** | Vision Document v3.0, Architecture Decision Records (001-012) |
 
 ---
 
@@ -62,14 +62,14 @@ The system operates through specialists configurable via YAML:
 * **FR-08 (Context Lifecycle & Hygiene):** The system must actively manage the limited "working memory" (Context Window) to prevent saturation and hallucination.
     * **Requirement:** The system must differentiate between **Ephemeral Noise** (phatic chat, temporary logistics) and **Persistent Facts**. It must automatically summarize or "forget" the former while promoting the latter to Long-Term Memory.
 * **FR-09 (Unified Memory Interface):** The system must provide a unified abstraction layer for memory operations, decoupling the agents from the storage backend.
-    * **Requirement:** Agents should not decide *where* to store data (Session vs. Vector DB). They should simply "Save Memory," and the system determines the appropriate persistence layer based on the information's half-life.
+    * **Requirement:** Agents should not decide *where* to store data (Session vs. Vector DB). They should simply "Save Memory," and the system determines the appropriate persistence layer based on the information's half-life. **(ADR-012 implemented: MemoryGateway + universal RBAC schema)**
 * **FR-10 (Passive Ingestion / "The Brain Dump"):** The system must be capable of processing unstructured streams of consciousness without conversational turn-taking.
     * **Requirement:** The user can send long audio notes or text blocks (tagged as `#dump`). The system extracts key entities, tasks, and facts, archives them silently, and acknowledges receipt without initiating a chat flow.
 
 ### 3.4 Sensory Perception & Deep Ingestion (The Senses)
 *The system must ingest and comprehend high-fidelity information sources beyond simple chat text.*
 
-* **FR-17 (The Reader / Document Driver):** The system must possess the capability to read, parse, and understand dense external documentation to support decision-making.
+* **FR-17 (The Reader / Document Driver):** The system must possess the capability to read, parse, and understand dense external documentation to support decision-making. **(Status: Completed)**
     * **Direct File Parsing:** The system must accept `PDF`, `DOCX`, and `TXT` files directly uploaded to the interface. It must extract clean text, ignoring formatting artifacts, for immediate analysis by the agents.
     * **Remote Access (Cloud Drive):** The system must be able to resolve and access URLs pointing to authorized cloud documents (e.g., Google Docs/Drive) found within Calendar events (e.g., "Read briefing before meeting") or chat messages.
     * **Content Synthesis:** When presented with a large document, the system must be able to generate summaries, extract action items, or answer specific questions based *strictly* on the document's content (Grounding).
