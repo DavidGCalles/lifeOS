@@ -106,37 +106,41 @@ graph TD
     %% --- FASE 1: PROTOCOLOS DE INTERACCIÓN ---
     subgraph Phase1 [Fase 1: Social Logic & Interaction]
         direction TB
-        FR16_Logic(<b>FR-16: Group Governance Middleware</b><br/>Scope: main.py Routing<br/>Status: Implemented):::done
-        FR16_Logs(<b>Passive Interaction Logging</b><br/>Scope: SessionManager<br/>Status: In progress (passive data capture active) ):::high
+        FR16_Logic("<b>FR-16: Group Governance Middleware</b><br/>Scope: main.py Routing<br/>Status: Implemented"):::done
+        FR16_Logs("<b>Passive Interaction Logging</b><br/>Scope: SessionManager<br/>Status: Completed"):::done
     end
 
     %% --- FASE 2: INGESTA DE DOCUMENTOS ---
     subgraph Phase2 [Fase 2: Deep Ingestion Service]
         direction TB
-        FR17_Doc(<b>FR-17: Document Parser</b><br/>Scope: Sensory Cortex<br/>Input: Direct File Upload<br/>Status: Completed):::done
-        FR17_Drive(<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Input: Linked Resources<br/>Status: Completed):::done
+        FR17_Doc("<b>FR-17: Document Parser</b><br/>Scope: Sensory Cortex<br/>Status: Completed"):::done
+        FR17_Drive("<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Status: Completed"):::done
     end
 
-    ADR13_Embed(<b>ADR-013: Self-hosted Embeddings Service</b><br/>Scope: Memory management<br/>Status: Completed):::done
+    ADR13_Embed("<b>ADR-013: Self-hosted Embeddings Service</b><br/>Scope: Memory management<br/>Status: Completed"):::done
 
     %% --- FASE 3: ARQUITECTURA DE MEMORIA ---
-    subgraph Phase3 [Fase 3: Unified Memory Core]
+    subgraph Phase3 [Fase 3: Asynchronous Memory Lifecycle]
         direction TB
-        ADR12_Interface(<b>ADR-012: Memory Abstraction Layer</b><br/>Refactors: FR-07, FR-08<br/>Status: Completed<br/>Target: Unified I/O):::done
-        ADR12_RAG(<b>Context Retention Policy</b><br/>Scope: Lifecycle Management<br/>Logic: Short-Term vs Long-Term):::complex
+        ADR12_Interface("<b>ADR-012: Memory Abstraction Layer</b><br/>Scope: Unified I/O & RBAC<br/>Status: Completed"):::done
+        
+        ADR14_Workers("<b>ADR-014: Background Workers</b><br/>Scope: SystemStatus & Async Edge<br/>Status: Target"):::high
+        
+        FR08_Retention("<b>FR-08: Context Retention Policy</b><br/>Scope: Semantic Consolidation<br/>Status: Blocked by ADR-014"):::complex
     end
 
-    %% DEPENDENCIAS
+    %% DEPENDENCIAS Y FLUJO
+    Start((START)) --> Phase1
     FR16_Logic --> FR16_Logs
     FR16_Logs --> ADR13_Embed
     ADR13_Embed --> FR17_Doc
     FR17_Doc --> FR17_Drive
     FR17_Drive --> ADR12_Interface
-    ADR12_Interface --> ADR12_RAG
-
-    %% FLUJO
-    Start((START)) --> Phase1
-    Phase3 --> End((Production))
+    
+    %% NUEVO FLUJO DE LA FASE 3
+    ADR12_Interface --> ADR14_Workers
+    ADR14_Workers --> FR08_Retention
+    FR08_Retention --> End((Production))
 ```
 
 ---
