@@ -33,6 +33,8 @@ class FastTrackAgent:
             user_message: Puede ser un string (texto plano) o una lista de dicts (OpenAI Multimodal format).
             context: Información adicional (Identidad, Historial) que se inyecta en el System Prompt.
         """
+        logger.info("⚡ Fast Agent execution: role='%s' model=%s input_type=%s", self.role, self.model_name, type(user_message).__name__)
+        
         # 1. Construcción del System Prompt
         system_prompt = (
             f"ROLE: {self.role}\n"
@@ -45,6 +47,7 @@ class FastTrackAgent:
         # Inyectamos el contexto en el System Prompt para mantener limpio el mensaje del usuario
         if context:
             system_prompt += f"\n\n[RUNTIME CONTEXT]\n{context}"
+            logger.debug("📌 Context injected (len=%d)", len(context))
 
         # 2. Construcción de mensajes
         # Si user_message es una lista, se pasa tal cual. LiteLLM se encarga del resto.
@@ -55,11 +58,14 @@ class FastTrackAgent:
 
         if self.verbose:
             preview = "📸 [Multimodal Payload]" if isinstance(user_message, list) else user_message
-            logger.info(f"⚡ ASYNC AGENT ({self.role}): {preview}")
+            logger.info("🎯 Agent Input: %s", preview[:80] if isinstance(preview, str) else preview)
 
         # 3. Bucle de Ejecución (Max 5 turnos)
-        for _ in range(5):
+        turn = 0
+        for turn in range(5):
+            logger.debug("🔄 Reasoning turn %d/5 for agent '%s'", turn + 1, self.role)
             try:
+                logger.debug("📤 Calling LLM: model=%s tools=%d", self.model_name, len(self.openai_tools) if self.openai_tools else 0)
                 response = await self.router.acompletion(
                     model=self.model_name,
                     messages=messages,
@@ -85,30 +91,38 @@ class FastTrackAgent:
                 messages.append(msg_dict)
 
                 if getattr(msg, "tool_calls", None):
-                    if self.verbose:
-                        logger.info(f"   🛠️  Tool Calls: {len(msg.tool_calls)}")
+                    logger.info("🛠️ Tool invocation detected: %d tool(s) called", len(msg.tool_calls))
 
                     for tool_call in msg.tool_calls:
                         tool_name = tool_call.function.name
                         tool_args_str = tool_call.function.arguments
                         tool_call_id = tool_call.id
                         
+                        logger.debug("🔧 Executing tool: %s (id=%s)", tool_name, tool_call_id[:8])
+                        
                         tool_instance = self.tool_map.get(tool_name)
                         result_content: Any = ""
 
                         if not tool_instance:
                             result_content = f"Error: Tool '{tool_name}' not found."
+                            logger.warning("⚠️ Tool not found: %s", tool_name)
                         else:
                             try:
                                 args = json.loads(tool_args_str)
+                                logger.debug("📥 Tool args parsed: %s", list(args.keys()))
+                                
                                 # Detección robusta de corrutinas
                                 is_async = inspect.iscoroutinefunction(tool_instance.run) or \
                                            (hasattr(tool_instance, "_run") and inspect.iscoroutinefunction(tool_instance._run))
 
                                 if is_async:
+                                    logger.debug("⚡ Running async tool: %s", tool_name)
                                     result_content = await tool_instance.run(**args)
                                 else:
+                                    logger.debug("🔄 Running sync tool in thread pool: %s", tool_name)
                                     result_content = await asyncio.to_thread(tool_instance.run, **args)
+                                
+                                logger.debug("✅ Tool completed: %s (result_len=%d)", tool_name, len(str(result_content)))
                                 
                                 # Paracaídas por si devuelve corrutina sin esperar
                                 if inspect.iscoroutine(result_content):
@@ -116,7 +130,7 @@ class FastTrackAgent:
 
                             except Exception as e:
                                 error_msg = f"Error executing {tool_name}: {str(e)}"
-                                logger.error(error_msg)
+                                logger.error("❌ Tool execution failed: %s -> %s", tool_name, str(e), exc_info=True)
                                 result_content = error_msg
 
                         messages.append({

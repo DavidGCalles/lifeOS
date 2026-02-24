@@ -4,20 +4,21 @@ import asyncio
 import json
 import re
 import logging
+import time
 from typing import Any
 from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
-from src.utils.session_manager import SessionManager
 from src.identity_manager import UserContext 
+from src.memory_gateway import MemoryGateway
 
 logger = logging.getLogger(__name__)
 
 class CrewOrchestrator:
-    def __init__(self, session_manager: SessionManager):
+    def __init__(self, memory_gateway: MemoryGateway):
         self.agents = LifeOSAgents()
         self.tasks = LifeOSTasks()
-        self.session_manager = session_manager
+        self.memory_gateway = memory_gateway
 
     def _format_identity_context(self, user: UserContext | None) -> str:
         if not user: return ""
@@ -55,6 +56,9 @@ class CrewOrchestrator:
         """
         Enruta la petición haciendo Hot-Swap de modelo si es necesario.
         """
+        start_time = time.time()
+        logger.info("🚦 Routing initiated: user=%s message_type=%s", user.telegram_id if user else "unknown", type(user_message).__name__)
+        
         dispatcher = self.agents.create_agent('dispatcher')
         
         # 1. DETECCIÓN MULTIMODAL
@@ -69,10 +73,13 @@ class CrewOrchestrator:
         if getattr(dispatcher, "is_fast_agent", False):
             logger.info("⚡ Routing (Fast Track)...")
             try:
+                exec_start = time.time()
                 raw_response = await dispatcher.execute(
                     user_message=user_message, 
                     context=routing_context
                 )
+                exec_elapsed = time.time() - exec_start
+                logger.info("📤 Dispatcher responded in %.2fs (len=%d)", exec_elapsed, len(str(raw_response)))
                 
                 # 2. PARSING JSON ESTRICTO
                 decision_data = self._clean_and_extract_json(raw_response)
@@ -80,20 +87,22 @@ class CrewOrchestrator:
                     candidate = str(decision_data["target_agent"]).strip().upper()
                     # Validate the decided agent exists in configuration
                     if candidate.lower() in self.agents.config:
-                        logger.info(f"✅ Router Decision: {candidate} (raw: {raw_response[:120]})")
+                        total_elapsed = time.time() - start_time
+                        logger.info("✅ Router Decision: %s (total_time=%.2fs)", candidate, total_elapsed)
                         return candidate
                     else:
-                        logger.warning(f"⚠️ Router Decision '{candidate}' not recognized. Raw response: {raw_response[:200]}. Defaulting to JANE.")
+                        logger.warning("⚠️ Router Decision '%s' not recognized. Raw response: %s. Defaulting to JANE.", candidate, raw_response[:200])
                         return "JANE"
                 
                 # 3. FALLBACK SEGURO (Default -> JANE)
                 # Si el modelo no devuelve un JSON claro, NO adivinamos por palabras clave.
                 # Preferimos fallar hacia el asistente general (Jane) que enviar "reformar cocina" al cocinero.
-                logger.warning(f"⚠️ Router Fallback: No valid JSON detected in '{raw_response[:50]}...'. Defaulting to JANE.")
+                logger.warning("⚠️ Router Fallback: No valid JSON detected. Defaulting to JANE.")
                 return "JANE"
 
             except Exception as e:
-                logger.error(f"⚠️ Router Error (Safety Catch): {e}. Defaulting to JANE.")
+                elapsed = time.time() - start_time
+                logger.error("❌ Router Error after %.2fs: %s. Defaulting to JANE.", elapsed, str(e), exc_info=True)
                 return "JANE"
         else:
             # Fallback para modo lento (Legacy)
@@ -112,35 +121,58 @@ class CrewOrchestrator:
                               chat_id: int | None = None, 
                               user: UserContext | None = None, 
                               extra_context: str | None = None) -> Any:
-        # ... (sin cambios en execute_request) ...
+        start_time = time.time()
         yaml_key = target_agent_key.lower()
-        logger.info(f"🚀 Executing '{yaml_key}'...")
+        logger.info("🚀 Agent execution starting: agent=%s user=%s chat_id=%s", yaml_key, user.telegram_id if user else "unknown", chat_id)
 
         agent = self.agents.create_agent(yaml_key) or self.agents.create_agent('jane')
+        if agent is None:
+            logger.error("❌ Agent '%s' not found, fallback failed. Returning error.", yaml_key)
+            return "Agent not available"
 
         context_parts: list[str] = []
-        if extra_context: context_parts.append(f"🔥 PRIORITY CONTEXT: {extra_context}")
-        if user: context_parts.append(self._format_identity_context(user))
+        if extra_context:
+            context_parts.append(f"🔥 PRIORITY CONTEXT: {extra_context}")
+            logger.debug("📌 Extra context injected (len=%d)", len(extra_context))
+        if user:
+            context_parts.append(self._format_identity_context(user))
         
-        if chat_id:
-            history = await self.session_manager.get_context(chat_id)
+        if chat_id and user:
+            logger.debug("📚 Fetching working memory for chat_id=%s", chat_id)
+            # retrieve only messages visible to this user via gateway
+            history = await self.memory_gateway.fetch_working_memory(user, chat_id)
             if history:
+                logger.info("📜 Chat history loaded: %d messages", len(history))
                 history_str = "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history])
                 context_parts.append(f"📜 CHAT HISTORY:\n{history_str}")
+            else:
+                logger.debug("📜 No chat history available")
 
         full_context = "\n\n".join(context_parts)
 
-        if getattr(agent, "is_fast_agent", False):
-            return await agent.execute(user_message=user_message, context=full_context)
-        else:
-            if isinstance(user_message, list):
-                text_content = next((x['text'] for x in user_message if x['type'] == 'text'), "Image Content")
-                user_message_str = f"[User sent an image]: {text_content}"
+        try:
+            if getattr(agent, "is_fast_agent", False):
+                logger.debug("⚡ Fast Agent execution path")
+                exec_start = time.time()
+                result = await agent.execute(user_message=user_message, context=full_context)
+                exec_elapsed = time.time() - exec_start
+                logger.info("✅ Fast agent execution complete: %.2fs", exec_elapsed)
+                return result
             else:
-                user_message_str = user_message
+                logger.debug("🔧 Crew Agent execution path (slow)")
+                if isinstance(user_message, list):
+                    text_content = next((x['text'] for x in user_message if x['type'] == 'text'), "Image Content")
+                    user_message_str = f"[User sent an image]: {text_content}"
+                    logger.debug("📸 Multimodal message detected, extracted text: %s", text_content[:50])
+                else:
+                    user_message_str = user_message
             
             full_message = f"{full_context}\n👇 REQUEST:\n{user_message_str}"
             task1 = self.tasks.analysis_task(agent, full_message)
             task2 = self.tasks.response_task(agent)
             crew = Crew(agents=[agent], tasks=[task1, task2], verbose=True)
             return await asyncio.to_thread(crew.kickoff)
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error("❌ Error during agent execution after %.2fs: %s", elapsed, str(e), exc_info=True)
+            return f"Error executing agent: {str(e)}"

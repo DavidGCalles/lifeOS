@@ -1,5 +1,6 @@
 import io
 import logging
+import time
 import base64
 from typing import Any
 from telegram import Update
@@ -46,6 +47,9 @@ class AudioDriver(SensoryDriver):
         """
         Invoca al LLM (audio-model) con el audio ya normalizado.
         """
+        start_time = time.time()
+        logger.info("🎙️ Audio transcription starting: audio_size=%d bytes", len(audio_buffer.getvalue()))
+        
         try:
             # 1. Codificar a Base64 (MP3)
             audio_b64 = base64.b64encode(audio_buffer.getvalue()).decode('utf-8')
@@ -71,40 +75,59 @@ class AudioDriver(SensoryDriver):
             ]
 
             # 3. Llamada al Pool (use embedded Router singleton)
+            logger.debug("📤 Sending to audio-model for transcription...")
+            llm_start = time.time()
             router = LiteLLMRouter()
             response = await router.acompletion(
                 model="audio-model",
                 messages=messages,
                 temperature=0.0
             )
+            llm_elapsed = time.time() - llm_start
+            logger.debug("✅ Audio model responded in %.2fs", llm_elapsed)
 
-            return response.choices[0].message.content or ""
+            result = response.choices[0].message.content or ""
+            total_elapsed = time.time() - start_time
+            logger.info("✅ Transcription complete: len=%d total_time=%.2fs", len(result), total_elapsed)
+            return result
 
         except Exception as e:
-            logger.error(f"❌ Error en Audio Transcription (Pool audio-model): {e}")
+            elapsed = time.time() - start_time
+            logger.error("❌ Audio transcription failed after %.2fs: %s", elapsed, str(e), exc_info=True)
             return "[Error transcribiendo audio]"
 
     async def process(self, update: Update) -> dict[str, Any] | None:
         if not update.message or not update.message.voice:
             return None
 
+        start_time = time.time()
+        
         try:
             voice = update.message.voice
-            logger.info(f"   🎙️ Procesando Nota de Voz ({voice.duration}s)...")
+            logger.info("🎙️ Audio processing: duration=%ds file_id=%s", voice.duration, voice.file_id[:10])
 
             # 1. Descarga (IO Bound)
+            logger.debug("⬇️ Downloading voice file...")
+            download_start = time.time()
             bot = update.get_bot()
             new_file = await bot.get_file(voice.file_id)
             
             raw_buffer = io.BytesIO()
             await new_file.download_to_memory(out=raw_buffer)
             raw_buffer.seek(0)
+            download_elapsed = time.time() - download_start
+            logger.debug("✅ Download complete: %.2fs size=%d bytes", download_elapsed, len(raw_buffer.getvalue()))
 
             # 2. Normalización (CPU Bound - FFmpeg)
             # Convertimos a formato universal antes de pasar al cerebro
+            logger.debug("🔄 Normalizing audio...")
+            normalize_start = time.time()
             normalized_buffer = self._normalize_audio(raw_buffer)
+            normalize_elapsed = time.time() - normalize_start
+            logger.debug("✅ Normalization complete: %.2fs", normalize_elapsed)
 
             # 3. Transcripción (Network Bound - Gemini)
+            logger.debug("🤖 Transcribing audio...")
             text = await self._transcribe(normalized_buffer)
             
             if not text:
@@ -112,6 +135,9 @@ class AudioDriver(SensoryDriver):
 
             # Formateo final con prefijo para el contexto del Agente
             final_content = f"[VOICE NOTE]: {text}"
+
+            total_elapsed = time.time() - start_time
+            logger.info("✅ Audio processing complete: total_time=%.2fs result_len=%d", total_elapsed, len(final_content))
 
             return {
                 "role": "user",
@@ -125,5 +151,6 @@ class AudioDriver(SensoryDriver):
             }
 
         except Exception as e:
-            logger.error(f"❌ AudioDriver Critical Failure: {e}", exc_info=True)
+            elapsed = time.time() - start_time
+            logger.error("❌ AudioDriver failure after %.2fs: %s", elapsed, str(e), exc_info=True)
             return None

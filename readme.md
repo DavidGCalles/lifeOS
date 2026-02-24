@@ -1,6 +1,6 @@
 # 🔥 LifeOS v2 — Personal Governance OS (Status: Active Development)
 
-**Última actualización:** 2026-02-03
+**Última actualización:** 2026-02-23
 
 **LifeOS** es un sistema de gobernanza personal basado en agentes autónomos (**CrewAI**) que ayudan a convertir intención en acción. No es un simple chatbot: es una arquitectura modular, autoalojada y orientada a privacidad que combina **enrutamiento de agentes**, **memoria dual (sesiones + vector DB)** y un **proxy de LLMs (LiteLLM)** para trabajar con modelos multimodales de forma segura y sustituible.
 
@@ -10,6 +10,9 @@
 - ✅ **Sensory Cortex (Multimodal)**: Soporte para **imágenes** (passthrough visual) y **notas de voz** (normalización + transcripción). Los inputs no textuales se procesan en `src/sensory` y se entregan a los agentes en un formato multimodal estándar.
 - ✅ **Two-Speed / Fast Track**: Canal "rápido" para intents simples (FastTrack agents) y canal "profundo" para razonamiento costoso. Implementado en `src/fast_agents.py` y `src/crew_orchestrator.py`.
 - ✅ **Proxy de LLMs (LiteLLM)** y **Memoria Semántica (Qdrant)** funcionando (configurable en `litellm_config.yaml`).
+- 🛡️ **Social Shield (Group Middleware)**: el bot permanece silencioso en grupos salvo que se le RESPONDA o se le mencione explícitamente; los mensajes de fondo se registran pasivamente en Firestore para poder usarlos como contexto más tarde.
+- 🔒 **RBAC Gateway & Memoria Unificada**: se introdujo `MemoryGateway` que obliga a pasar un `UserContext` y aplica filtros de visibilidad a cada consulta. El esquema universal de metadatos ya se valida en `SessionManager` y todos los accesos vectoriales pasan por controles matemáticos (ADR‑012). **(ADR-012 implementado y validado: arquitectura unificada, multi-tenant, y segregación de dominios)**
+
 
 ---
 
@@ -17,9 +20,10 @@
 
 - **CrewAI (Agents):** Agentes especializados declarados en `src/config/agents.yaml`. Cada agente tiene personalidad, herramientas y objetivos.
 - **LiteLLM Proxy:** Abstracción para cambiar proveedores de modelo con una configuración central.
-- **Memoria Dual:** `sessions.json` para contexto conversacional y **Qdrant** para memoria vectorial a largo plazo.
+- **Memoria Dual & Puerta Unificada:** `sessions.json` para contexto conversacional y **Qdrant** para memoria vectorial a largo plazo; el nuevo `MemoryGateway` ofrece un API única que inyecta filtros RBAC en todas las lecturas.
 - **Identidad / RBAC:** `IdentityManager` protege la entrada y asigna roles (`ADMIN`, `FAMILY`, `GUEST`).
 - **Sensory Cortex:** Middleware (`src/sensory/cortex.py`) que enruta `photo` y `voice` a drivers especializados (`VisualDriver`, `AudioDriver`).
+- **Social Shield:** Capa de gobernanza de grupos que mantiene el bot en silencio por defecto y procesa activaciones por reply/mention; admite ingestión pasiva de mensajes de fondo.
 
 ---
 
@@ -69,6 +73,12 @@ docker-compose logs -f lifeos
 ```
 lifeOS/
 ├── data/                  # Qdrant, sessions.json
+
+
+**Legacy data cleanup:** after the schema change all Firestore session
+messages now require RBAC metadata. Run `python scripts/wipe_legacy_sessions.py`
+to purge any existing non‑compliant documents before going live.
+
 ├── docs/                  # Vision, PRD, ADRs
 ├── docker-compose.yml
 ├── litellm_config.yaml
@@ -96,15 +106,15 @@ graph TD
     %% --- FASE 1: PROTOCOLOS DE INTERACCIÓN ---
     subgraph Phase1 [Fase 1: Social Logic & Interaction]
         direction TB
-        FR16_Logic(<b>FR-16: Group Governance Middleware</b><br/>Scope: main.py Routing<br/>Status: Ready to Dev):::urgent
-        FR16_Logs(<b>Passive Interaction Logging</b><br/>Scope: SessionManager<br/>Status: Definition):::urgent
+        FR16_Logic(<b>FR-16: Group Governance Middleware</b><br/>Scope: main.py Routing<br/>Status: Implemented):::done
+        FR16_Logs(<b>Passive Interaction Logging</b><br/>Scope: SessionManager<br/>Status: In progress (passive data capture active) ):::high
     end
 
     %% --- FASE 2: INGESTA DE DOCUMENTOS ---
     subgraph Phase2 [Fase 2: Deep Ingestion Service]
         direction TB
-        FR17_Doc(<b>FR-17: Document Parser</b><br/>Scope: Sensory Cortex<br/>Input: Direct File Upload):::high
-        FR17_Drive(<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Input: Linked Resources):::high
+        FR17_Doc(<b>FR-17: Document Parser</b><br/>Scope: Sensory Cortex<br/>Input: Direct File Upload<br/>Status: Completed):::done
+        FR17_Drive(<b>FR-17: External Source Connector</b><br/>Scope: Drive API Tools<br/>Input: Linked Resources<br/>Status: Completed):::done
     end
 
     ADR13_Embed(<b>ADR-013: Self-hosted Embeddings Service</b><br/>Scope: Memory management<br/>Status: Completed):::done
@@ -112,7 +122,7 @@ graph TD
     %% --- FASE 3: ARQUITECTURA DE MEMORIA ---
     subgraph Phase3 [Fase 3: Unified Memory Core]
         direction TB
-        ADR12_Interface(<b>ADR-012: Memory Abstraction Layer</b><br/>Refactors: FR-07, FR-08<br/>Target: Unified I/O):::complex
+        ADR12_Interface(<b>ADR-012: Memory Abstraction Layer</b><br/>Refactors: FR-07, FR-08<br/>Status: Completed<br/>Target: Unified I/O):::done
         ADR12_RAG(<b>Context Retention Policy</b><br/>Scope: Lifecycle Management<br/>Logic: Short-Term vs Long-Term):::complex
     end
 

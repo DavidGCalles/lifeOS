@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 # --- 1. ENUMS (Restricted Vocabulary) ---
 
-class MemoryDomain(str, Enum):
+class MemoryCategory(str, Enum):
     PROFESSIONAL = "professional"
     FINANCE = "finance"
     HEALTH = "health"
@@ -26,17 +26,52 @@ class MemorySource(str, Enum):
     AGENT_REFLECTION = "agent_reflection"
     DOCUMENT_IMPORT = "document_import"
 
+# New enums to support the universal RBAC schema (ADR-012)
+class MemoryVisibility(str, Enum):
+    PRIVATE = "PRIVATE"
+    FAMILY = "FAMILY"
+    PUBLIC = "PUBLIC"
+
+class MemoryDomainType(str, Enum):
+    EPISODIC = "episodic"
+    DOCUMENT = "document"
+    SYSTEM = "system"
+
 # --- 2. SCHEMAS ---
 
-class EpisodicMemoryMetadata(BaseModel):
+class BaseMemoryMetadata(BaseModel):
+    """Universal metadata that every piece of memory must include.
+
+    Enforced by ADR-012 to guarantee a strict RBAC surface and allow
+    vector/domain segregation. All other memory metadata schemas should
+    subclass this base model.
     """
-    Define estrictamente qué metadatos aceptamos.
-    Esto evita que un agente invente campos como 'mood' o 'category'.
+    # Telegram ID of the user or system that generated the memory.
+    owner_id: str
+
+    # Access control classification for retrieval queries.
+    visibility: MemoryVisibility = MemoryVisibility.PRIVATE
+
+    # Semantic domain used to choose the correct storage/index.
+    domain: MemoryDomainType
+
+
+class EpisodicMemoryMetadata(BaseMemoryMetadata):
     """
-    domain: MemoryDomain
+    Metadata specific to episodic (chat/working) memories.
+    Inherits the universal RBAC fields defined above and then adds the
+    existing specialized attributes. The original `domain` field has been
+    renamed to `category` to avoid confusion with the base `domain` used by
+    the memory gateway/Qdrant collection segmentation.
+    """
+    # override default domain so callers don't have to specify it explicitly
+    domain: MemoryDomainType = MemoryDomainType.EPISODIC
+
+    # category of the memory (professional, finance, etc.)
+    category: MemoryCategory
     type: MemoryType
     source: MemorySource
-    
+
     # Campo opcional para trazas extra sin romper el esquema estricto
     context_tags: str | None = None
 
@@ -49,3 +84,31 @@ class EpisodicMemoryItem(BaseModel):
     metadata: EpisodicMemoryMetadata
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     created_by: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Session message schema used by the Firestore-backed SessionManager.
+# According to ADR-012 every document stored in the sessions/messages
+# collection must include the universal BaseMemoryMetadata fields in order
+# to support strict RBAC and domain segregation. This model wraps the
+# conversational payload together with the required metadata and forbids
+# extraneous keys to avoid legacy data creeping back in.
+# ---------------------------------------------------------------------------
+
+class SessionMessage(BaseModel):
+    # fields reflecting what has historically been stored in Firestore
+    message_id: str | int | None = None
+    role: str
+    content: str
+    sender_id: str
+    name: str
+    input_type: str
+    agent_key: str | None = None
+
+    # RBAC / routing metadata
+    metadata: BaseMemoryMetadata
+
+    # Disallow any additional unspecified keys to guarantee schema
+    # compliance during validation.
+    model_config = {"extra": "forbid"}
+

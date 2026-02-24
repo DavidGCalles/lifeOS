@@ -1,6 +1,7 @@
 import io
 import base64
 import logging
+import time
 from typing import Any
 from PIL import Image
 from telegram import Update
@@ -50,12 +51,14 @@ class VisualDriver(SensoryDriver):
         if not update.message or not update.message.photo:
             return None
 
+        start_time = time.time()
+        
         try:
             # Seleccionamos la foto de mayor resolución (la última de la lista)
             photo = update.message.photo[-1]
             file_id = photo.file_id
             
-            logger.info(f"   📸 Processing visual input (ID: {file_id[:10]}... | {photo.width}x{photo.height})")
+            logger.info("📸 Visual processing: file_id=%s dimensions=%sx%s", file_id[:10], photo.width, photo.height)
 
             # Obtenemos el objeto Bot para descargar el archivo
             bot = update.get_bot()
@@ -64,13 +67,21 @@ class VisualDriver(SensoryDriver):
                 return None
 
             # Descarga en memoria (Non-blocking IO)
+            logger.debug("⬇️ Downloading image file...")
+            download_start = time.time()
             new_file = await bot.get_file(file_id)
             img_buffer = io.BytesIO()
             await new_file.download_to_memory(out=img_buffer)
             img_buffer.seek(0)
+            download_elapsed = time.time() - download_start
+            logger.debug("✅ Download complete: %.2fs", download_elapsed)
 
             # Procesamiento de imagen (CPU bound - debería ser rápido para <1024px)
+            logger.debug("🖼️ Optimizing image...")
+            optimize_start = time.time()
             base64_image = self._optimize_image(img_buffer)
+            optimize_elapsed = time.time() - optimize_start
+            logger.debug("✅ Optimization complete: %.2fs base64_len=%d", optimize_elapsed, len(base64_image))
             
             # Construcción del Payload Multimodal
             caption = update.message.caption or ""
@@ -89,8 +100,11 @@ class VisualDriver(SensoryDriver):
                 ]
             }
             
+            total_elapsed = time.time() - start_time
+            logger.info("✅ Visual processing complete: file_id=%s total_time=%.2fs", file_id[:10], total_elapsed)
             return payload
 
         except Exception as e:
-            logger.error(f"❌ VisualDriver Error: {e}", exc_info=True)
+            elapsed = time.time() - start_time
+            logger.error("❌ VisualDriver error after %.2fs: %s", elapsed, str(e), exc_info=True)
             return None

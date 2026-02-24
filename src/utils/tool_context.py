@@ -6,6 +6,8 @@ from src.tools import TOOL_MAPPING
 # ---------------------------------------------------------
 CONTEXT_NEEDED = [
     "save_memory",
+    "search_memory",
+    "forget_memory",
     "set_email",
     "calendar_list",
     "calendar_add",
