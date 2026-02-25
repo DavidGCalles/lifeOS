@@ -7,14 +7,32 @@ services:
     env_file:
       - .env
     environment:
-      - PYTHONUNBUFFERED=1
-      - OPENAI_API_KEY=sk-fake-key-bypass
+      # This is a required override to use the correct path inside the container.
       - GOOGLE_APPLICATION_CREDENTIALS=/app/src/config/credentials.json
-      - EMBEDDING_API_BASE=http://lifeos_embeddings:7997
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
+    ports:
+      - "8080:8080"
+
+  lifeos_worker:
+    build: .
+    container_name: lifeos_worker
+    depends_on:
+      - litellm
+    env_file:
+      - .env
+    environment:
+      # This is a required override to use the correct path inside the container.
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/src/config/credentials.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+    ports:
+      - "8081:8080"
+    command: ["python", "main_worker.py"]
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
