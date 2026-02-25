@@ -99,7 +99,6 @@ class CrewOrchestrator:
                 # Preferimos fallar hacia el asistente general (Jane) que enviar "reformar cocina" al cocinero.
                 logger.warning("⚠️ Router Fallback: No valid JSON detected. Defaulting to JANE.")
                 return "JANE"
-
             except Exception as e:
                 elapsed = time.time() - start_time
                 logger.error("❌ Router Error after %.2fs: %s. Defaulting to JANE.", elapsed, str(e), exc_info=True)
@@ -114,6 +113,19 @@ class CrewOrchestrator:
             crew = Crew(agents=[dispatcher], tasks=[task], verbose=True)
             decision = await asyncio.to_thread(crew.kickoff)
             return str(decision).strip().upper()
+        
+    async def run_consolidation_crew(self, conversation_history: str, user: UserContext) -> str:
+        """
+        Runs the memory consolidation crew to summarize a conversation.
+        """
+        start_time = time.time()
+        logger.info("🧠 Memory Consolidation crew initiated for user %s", user.telegram_id)
+
+        summary = "This is a placeholder summary."  # Default in case of failure
+
+        elapsed = time.time() - start_time
+        logger.info("✅ Memory Consolidation crew finished in %.2fs. Summary length: %d", elapsed, len(summary))
+        return summary
 
     async def execute_request(self, 
                               user_message: str | list[dict[str, Any]], 

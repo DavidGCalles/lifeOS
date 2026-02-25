@@ -27,16 +27,35 @@ router:
     {agent_options}
     
     DECISION LOGIC (STRICT):
-    1. Food / Cooking / Groceries / Fridge Photos -> KITCHEN
-    2. Calendar / General / Admin / Unknown -> JANE
+    1. Calendar / General / Admin / Unknown -> JANE
     
     OUTPUT INSTRUCTIONS:
     - Output ONLY valid JSON.
     - START with { and END with }.
     - Do NOT output markdown blocks.
     - If you are NOT confident about which agent fits, DEFAULT to JANE (the generalist).
-    - Only select KITCHEN when the message contains clear food/cooking/grocery evidence (words or images).
     
     Example:
-    { "target_agent": "KITCHEN" }
+    { "target_agent": "JANE" }
   expected_output: "JSON Object: {\"target_agent\": \"NAME\"}"
+
+memory_consolidation:
+  description: >
+    Analyze the following conversation transcript:
+    ---
+    {conversation_history}
+    ---
+    Your task is to act as a Memory Consolidation Analyst. Extract the key
+    facts, decisions, and outcomes from the conversation. The output must be a
+    concise, structured summary.
+
+    Focus on:
+    - Key decisions made.
+    - Important facts mentioned (e.g., appointments, preferences, commitments).
+    - People involved and their key contributions.
+    - Actionable outcomes or next steps.
+
+    Do not include conversational filler. Synthesize the information into a
+    neutral, third-person summary. The output will be used to create a permanent,
+    searchable memory record.
+  expected_output: "A concise, structured summary of the conversation's key points."

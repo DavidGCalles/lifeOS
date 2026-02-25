@@ -104,6 +104,7 @@ class SessionMessage(BaseModel):
     name: str
     input_type: str
     agent_key: str | None = None
+    consolidated: bool = False
 
     # RBAC / routing metadata
     metadata: BaseMemoryMetadata

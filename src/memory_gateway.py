@@ -289,3 +289,85 @@ class MemoryGateway:
             raise ValueError("UserContext must be provided for every write operation")
         manager = VectorMemoryManager(domain=domain)
         await manager.delete_memory(memory_id)
+
+    # ------------------------------------------------------------------
+    # Memory Consolidation Engine
+    # ------------------------------------------------------------------
+
+    @classmethod
+    async def fetch_unconsolidated_sessions(
+        cls, limit_per_session: int = 100
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Fetches all messages from all sessions that have not been consolidated.
+
+        Returns:
+            A dictionary where keys are session IDs and values are lists of
+            unconsolidated messages.
+        """
+        db = SessionManager._get_db()
+        if not db:
+            logger.warning("⚠️ Firestore client unavailable for consolidation scan.")
+            return {}
+
+        sessions_ref = db.collection("sessions")
+        all_sessions_messages = {}
+
+        async for session_doc in sessions_ref.stream():
+            session_id = session_doc.id
+            messages_ref = (
+                session_doc.reference.collection("messages")
+                .where("consolidated", "==", False)
+                .order_by("timestamp", direction=Query.ASCENDING)
+                .limit(limit_per_session)
+            )
+
+            unconsolidated_messages = []
+            async for msg_doc in messages_ref.stream():
+                msg_data = msg_doc.to_dict()
+                msg_data["message_id"] = msg_doc.id  # Ensure message_id is included
+                unconsolidated_messages.append(msg_data)
+
+            if unconsolidated_messages:
+                all_sessions_messages[session_id] = unconsolidated_messages
+                logger.info(
+                    "Found %d unconsolidated messages in session %s",
+                    len(unconsolidated_messages),
+                    session_id,
+                )
+
+        return all_sessions_messages
+
+    @classmethod
+    async def mark_messages_as_consolidated(
+        cls, session_id: str, message_ids: List[str]
+    ) -> int:
+        """
+        Marks a list of messages in a session as consolidated.
+
+        Args:
+            session_id: The ID of the session.
+            message_ids: A list of message IDs to mark as consolidated.
+
+        Returns:
+            The number of messages successfully marked as consolidated.
+        """
+        db = SessionManager._get_db()
+        if not db:
+            logger.error("⚠️ Firestore client unavailable. Cannot mark messages.")
+            return 0
+
+        batch = db.batch()
+        messages_ref = db.collection("sessions").document(session_id).collection("messages")
+
+        for msg_id in message_ids:
+            doc_ref = messages_ref.document(msg_id)
+            batch.update(doc_ref, {"consolidated": True})
+
+        await batch.commit()
+        logger.info(
+            "Marked %d messages as consolidated in session %s",
+            len(message_ids),
+            session_id,
+        )
+        return len(message_ids)
