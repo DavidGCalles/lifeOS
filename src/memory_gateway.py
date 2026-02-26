@@ -8,6 +8,7 @@ from qdrant_client import models
 
 from src.identity_manager import UserContext, UserRole
 from src.schemas.memory import MemoryVisibility, EpisodicMemoryItem
+from src.schemas.system_status import SystemStatus
 from src.utils.session_manager import SessionManager
 from src.memory_manager import VectorMemoryManager
 
@@ -371,3 +372,37 @@ class MemoryGateway:
             session_id,
         )
         return len(message_ids)
+
+    # ------------------------------------------------------------------
+    # System Status
+    # ------------------------------------------------------------------
+    @classmethod
+    async def get_system_status(cls) -> Optional[SystemStatus]:
+        """Retrieves the system status document from Firestore."""
+        db = SessionManager._get_db()
+        if not db:
+            logger.warning("Firestore client not available for system status check.")
+            return None
+
+        try:
+            doc_ref = db.document("system/status")
+            snapshot = await doc_ref.get()
+            if snapshot.exists:
+                return SystemStatus(**snapshot.to_dict())
+        except Exception as e:
+            logger.error(f"Error getting system status document: {e}", exc_info=True)
+        return None
+
+    @classmethod
+    async def update_system_status(cls, status: SystemStatus):
+        """Updates the system status document in Firestore."""
+        db = SessionManager._get_db()
+        if not db:
+            logger.warning("Firestore client not available for system status update.")
+            return
+
+        try:
+            doc_ref = db.document("system/status")
+            await doc_ref.set(status.model_dump())
+        except Exception as e:
+            logger.error(f"Error updating system status document: {e}", exc_info=True)
