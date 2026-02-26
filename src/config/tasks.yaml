@@ -45,25 +45,29 @@ memory_consolidation:
     decisiones, planes, o preferencias del usuario.
 
     REGLAS ESTRICTAS DE CLASIFICACIÓN:
-    Debes clasificar cada hecho usando EXCLUSIVAMENTE los siguientes valores:
-    - category: Solo puedes usar uno de estos valores: {categories}
-    - type: Solo puedes usar uno de estos valores: {types}
+    - category: Debe ser exactamente uno de: {categories}
+    - type: Debe ser exactamente uno de: {types}
 
-    REGLAS ESTRICTAS DE REDACCIÓN (PROHIBIDO META-REFERENCIAS):
-    - NO escribas sobre el sistema o la IA.
-    - NO uses frases como "LifeOS recuerda", "El usuario menciona", "David dice que".
-    - REDACTA el hecho como una verdad universal sobre el usuario.
-    - MAL: "LifeOS recuerda a Natalia como la pareja de David."
-    - BIEN: "La pareja de David es Natalia."
+    PATRONES DE REDACCIÓN (OBLIGATORIO):
+    Escribe el hecho como una verdad universal en tercera persona, centrada en la entidad real. 
+    
+    EJEMPLOS DE LO QUE DEBES HACER (BIEN):
+    - "La pareja del usuario es Natalia."
+    - "El usuario tiene un dolor en el hombro."
+    - "Gabriel es el hijo del usuario."
+    
+    EJEMPLOS DE LO QUE NUNCA DEBES HACER (MAL):
+    - "LifeOS recuerda a Natalia como la pareja." (Contiene al sistema)
+    - "El usuario menciona que le duele el hombro." (Contiene verbos de diálogo)
+    - "David confirmó que Gabriel es su hijo." (Contiene narrativa del chat)
 
-    Debes devolver ÚNICAMENTE un array JSON válido. Nada de texto introductorio.
-    Esquema exacto obligatorio:
+    Debes devolver ÚNICAMENTE un array JSON válido sin bloques de markdown:
     [
       {
-        "fact": "Texto atómico del hecho",
-        "category": "valor exacto de la lista",
-        "type": "valor exacto de la lista",
-        "tags": ["tag1"]
+        "fact": "La pareja del usuario es Natalia.",
+        "category": "family",
+        "type": "fact",
+        "tags": ["pareja", "natalia"]
       }
     ]
 
