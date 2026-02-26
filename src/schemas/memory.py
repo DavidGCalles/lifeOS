@@ -84,6 +84,7 @@ class EpisodicMemoryItem(BaseModel):
     metadata: EpisodicMemoryMetadata
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     created_by: str | None = None
+    score: float | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -46,16 +46,18 @@ async def verify_cron_token(request: Request):
 @app.post("/system/cron/consolidate", dependencies=[Depends(verify_cron_token)])
 async def consolidate_memory():
     """
-    Endpoint to trigger memory consolidation.
+    Endpoint to trigger memory consolidation with semantic deduplication.
     """
     logger.info("Received request to consolidate memory.")
     
+    # --- FASE 1: RECOLECCIÓN (Fetch Unconsolidated) ---
     unconsolidated_sessions = await memory_gateway.fetch_unconsolidated_sessions()
     
     if not unconsolidated_sessions:
         return {"status": "success", "message": "No unconsolidated memories found."}
 
     total_facts_saved = 0
+    total_facts_discarded = 0
     processed_sessions = []
 
     for session_id, messages in unconsolidated_sessions.items():
@@ -69,16 +71,15 @@ async def consolidate_memory():
 
         user_ctx = await IdentityManager.get_user(owner_id)
 
-        # Format conversation history
         conversation_history = "\n".join(
             [f"{msg.get('name', 'Unknown')}: {msg.get('content', '')}" for msg in messages]
         )
 
-        # Run consolidation task using FastTrack
+        # --- FASE 2: EXTRACCIÓN LLM (Escudo 1 - Prompting Estricto) ---
         summary_json_str = await orchestrator.run_consolidation_task(conversation_history, user_ctx)
 
         try:
-            # Limpieza brutal del output del LLM
+            # --- FASE 3: PARSEO Y VALIDACIÓN ---
             clean_str = summary_json_str.strip()
             if clean_str.startswith("```json"):
                 clean_str = clean_str[7:]
@@ -89,11 +90,16 @@ async def consolidate_memory():
             
             if not isinstance(extracted_facts, list):
                 logger.error(f"❌ El LLM no devolvió un array JSON para la sesión {session_id}. Output: {summary_json_str}")
-                continue # Saltamos esta sesión y no la marcamos como consolidada
+                continue
 
             facts_saved_for_session = 0
             for item in extracted_facts:
+                fact_text = item.get("fact")
+                if not fact_text:
+                    continue
+
                 try:
+                    # Validamos el esquema atómico antes de hacer nada más
                     metadata = EpisodicMemoryMetadata(
                         owner_id=user_ctx.telegram_id,
                         visibility=MemoryVisibility.PRIVATE,
@@ -103,28 +109,55 @@ async def consolidate_memory():
                         context_tags=",".join(item.get("tags", [])) if isinstance(item.get("tags"), list) else str(item.get("tags", ""))
                     )
 
+                    # --- FASE 4: DEDUPLICACIÓN SEMÁNTICA (Escudo 2 - Vector Math) ---
+                    is_redundant = False
+                    try:
+                        # Buscamos en el archivo semántico del usuario
+                        existing_memories = await memory_gateway.search_semantic_archive(
+                            user_ctx=user_ctx,
+                            query=fact_text,
+                            limit=1,
+                            domain=MemoryDomainType.EPISODIC.value # Buscamos solo en recuerdos episódicos
+                        )
+                        
+                        if existing_memories:
+                            top_match = existing_memories[0]
+                            similarity_score = top_match.score or 0.0
+                            
+                            # Umbral de corte: 0.88 suele ser óptimo para cosine similarity en e5/text-embedding
+                            if similarity_score > 0.88:
+                                logger.info(f"🔄 Recuerdo redundante omitido. "
+                                            f"Similitud: {similarity_score:.4f} "
+                                            f"Nuevo: '{fact_text}' | Existente: '{top_match.content}'")
+                                is_redundant = True
+                                total_facts_discarded += 1
+                    except Exception as dedup_err:
+                        # Si la búsqueda falla (ej. Qdrant timeout temporal), preferimos guardar duplicado a perder datos
+                        logger.warning(f"⚠️ Error verificando redundancia para '{fact_text}': {dedup_err}")
+
+                    if is_redundant:
+                        continue # Saltamos la inserción y pasamos al siguiente hecho
+
+                    # --- FASE 5: INSERCIÓN (Storage) ---
                     memory_item = EpisodicMemoryItem(
-                        content=item.get("fact"),
+                        content=fact_text,
                         metadata=metadata,
                         created_by="system_worker"
                     )
 
-                    # Llamada real a base de datos
                     #await memory_gateway.save_semantic_memory(user_ctx, memory_item)
-                    logger.info(f"💾 Hecho guardado [{metadata.category.value}]: {memory_item.content}")
+                    logger.info(f"💾 NUEVO Hecho guardado [{metadata.category.value}]: {memory_item.content}")
                     facts_saved_for_session += 1
                     total_facts_saved += 1
 
                 except ValueError as ve:
-                    # Captura fallos al instanciar los Enums si el LLM se inventa la categoría/tipo
-                    logger.warning(f"⚠️ Categoría/Tipo inválido detectado. Se descarta este hecho: {item}. Razón: {ve}")
+                    logger.warning(f"⚠️ Categoría/Tipo inválido. Se descarta: {item}. Razón: {ve}")
                     continue
                 except ValidationError as ve:
-                    # Captura fallos de estructura de Pydantic
-                    logger.warning(f"⚠️ Alucinación de esquema detectada. Se descarta este hecho: {item}. Razón: {ve}")
+                    logger.warning(f"⚠️ Alucinación de esquema. Se descarta: {item}. Razón: {ve}")
                     continue
 
-            # Marcar mensajes como consolidados SOLO si el JSON base era válido
+            # --- FASE 6: CIERRE (Mark as Consolidated) ---
             message_ids = [str(msg["message_id"]) for msg in messages if "message_id" in msg]
             #await memory_gateway.mark_messages_as_consolidated(session_id, message_ids)
 
@@ -136,11 +169,13 @@ async def consolidate_memory():
 
         except json.JSONDecodeError:
             logger.error(f"❌ El LLM no devolvió JSON parseable para la sesión {session_id}. Output: {summary_json_str}")
-            # NO marcamos como consolidado para que el worker lo reintente en el próximo ciclo
 
+    logger.info(f"✅ Ciclo de consolidación terminado. Guardados: {total_facts_saved}, Descartados (Redundantes): {total_facts_discarded}")
+    
     return {
         "status": "success",
         "facts_saved": total_facts_saved,
+        "facts_discarded_as_redundant": total_facts_discarded,
         "data": processed_sessions
     }
 

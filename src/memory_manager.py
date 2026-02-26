@@ -308,7 +308,8 @@ class VectorMemoryManager:
                     content=point.payload["content"],
                     created_at=point.payload["created_at"],
                     metadata=metadata,
-                    created_by=point.payload.get("created_by")
+                    created_by=point.payload.get("created_by"),
+                    score=getattr(point, "score", None)
                 )
                 found_items.append(item)
             
