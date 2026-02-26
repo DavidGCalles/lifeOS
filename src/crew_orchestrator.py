@@ -11,6 +11,7 @@ from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
 from src.identity_manager import UserContext 
 from src.memory_gateway import MemoryGateway
+from src.schemas.memory import MemoryCategory, MemoryType
 
 logger = logging.getLogger(__name__)
 
@@ -114,18 +115,32 @@ class CrewOrchestrator:
             decision = await asyncio.to_thread(crew.kickoff)
             return str(decision).strip().upper()
         
-    async def run_consolidation_crew(self, conversation_history: str, user: UserContext) -> str:
-        """
-        Runs the memory consolidation crew to summarize a conversation.
-        """
+    async def run_consolidation_task(self, conversation_history: str, user) -> str:
         start_time = time.time()
-        logger.info("🧠 Memory Consolidation crew initiated for user %s", user.telegram_id)
+        logger.info("🧠 Memory Consolidation iniciada para %s", user.telegram_id)
 
-        summary = "This is a placeholder summary."  # Default in case of failure
+        agent = self.agents.create_agent('memory_consolidator')
+        
+        # Extraemos los valores literales de tus Enums
+        valid_categories = [e.value for e in MemoryCategory]
+        valid_types = [e.value for e in MemoryType]
+
+        # Montamos el prompt con inyecciones seguras
+        task_template = self.tasks.config['memory_consolidation']['description']
+        
+        prompt = task_template.replace('{conversation_history}', conversation_history)
+        prompt = prompt.replace('{categories}', str(valid_categories))
+        prompt = prompt.replace('{types}', str(valid_types))
+
+        try:
+            summary_json_str = await agent.execute(user_message=prompt)
+        except Exception as e:
+            logger.error("❌ Fallo en LLM durante consolidación: %s", e)
+            return "[]" # Devolvemos array vacío en caso de fallo para no romper el parser
 
         elapsed = time.time() - start_time
-        logger.info("✅ Memory Consolidation crew finished in %.2fs. Summary length: %d", elapsed, len(summary))
-        return summary
+        logger.info("✅ Extracción completada en %.2fs.", elapsed)
+        return summary_json_str
 
     async def execute_request(self, 
                               user_message: str | list[dict[str, Any]], 

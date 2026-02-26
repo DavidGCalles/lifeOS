@@ -41,21 +41,25 @@ router:
 
 memory_consolidation:
   description: >
-    Analyze the following conversation transcript:
-    ---
+    Analiza la siguiente transcripción y extrae SOLO los hechos concretos, 
+    decisiones, planes, o preferencias del usuario.
+    IGNORA la charla trivial, saludos o descripciones de tus propias acciones.
+
+    REGLAS ESTRICTAS DE CLASIFICACIÓN:
+    Debes clasificar cada hecho usando EXCLUSIVAMENTE los siguientes valores:
+    - category: Solo puedes usar uno de estos valores: {categories}
+    - type: Solo puedes usar uno de estos valores: {types}
+
+    Debes devolver ÚNICAMENTE un array JSON válido. Nada de texto introductorio.
+    Esquema exacto obligatorio:
+    [
+      {
+        "fact": "Texto atómico del hecho",
+        "category": "valor exacto de la lista de categorías",
+        "type": "valor exacto de la lista de tipos",
+        "tags": ["tag1", "tag2"]
+      }
+    ]
+
+    Transcripción a analizar:
     {conversation_history}
-    ---
-    Your task is to act as a Memory Consolidation Analyst. Extract the key
-    facts, decisions, and outcomes from the conversation. The output must be a
-    concise, structured summary.
-
-    Focus on:
-    - Key decisions made.
-    - Important facts mentioned (e.g., appointments, preferences, commitments).
-    - People involved and their key contributions.
-    - Actionable outcomes or next steps.
-
-    Do not include conversational filler. Synthesize the information into a
-    neutral, third-person summary. The output will be used to create a permanent,
-    searchable memory record.
-  expected_output: "A concise, structured summary of the conversation's key points."

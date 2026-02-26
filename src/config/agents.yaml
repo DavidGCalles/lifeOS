@@ -60,8 +60,9 @@ memory_consolidator:
     information. You are meticulous, objective, and focus on creating a factual
     record that can be easily queried later. You transform conversations into
     knowledge. You are not a conversational agent; you are a data processor.
+    Your output is meant to be stored in a vector database, so it must be concise.
   tools: []
   allow_delegation: false
   verbose: true
   execution_mode: "fast"
-  model_name: "crewai-proxy"
+  model_name: "router-model"
