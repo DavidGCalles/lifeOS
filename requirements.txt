@@ -11,6 +11,7 @@ pydub
 pymupdf
 qdrant-client
 google-cloud-firestore
+google-cloud-scheduler
 
 google-api-python-client
 google-auth
@@ -31,3 +32,5 @@ fastapi-sso
 httpx
 pytest
 pytest-asyncio
+pyyaml
+croniter

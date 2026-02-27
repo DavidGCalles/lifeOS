@@ -34,6 +34,28 @@ services:
       - "8081:8080"
     command: ["python", "main_worker.py"]
 
+  lifeos_scheduler:
+    image: alpine:latest
+    container_name: lifeos_scheduler
+    depends_on:
+      - lifeos_worker
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /var/spool/cron/crontabs:/var/spool/cron/crontabs
+    working_dir: /app
+    entrypoint: >
+      sh -c "
+        apk add --no-cache curl yq &&
+        chmod +x /app/scripts/setup_crontab.sh &&
+        /app/scripts/setup_crontab.sh
+      "
+    networks:
+      default:
+        aliases:
+          - scheduler
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: lifeos_litellm

@@ -1,0 +1,13 @@
+# Minimal configuration for scheduling
+# Only contains jobs that actually exist in the API.  
+# Used by local crond helper and cloud deploy script.
+
+crons:
+  consolidate_memory:
+    description: "Consolidate and deduplicate episodic memories with semantic analysis"
+    enabled: true
+    timezone: "Europe/Madrid"
+    schedule: "0 2 * * *"  # 2:00 AM daily
+    target:
+      endpoint: "/system/cron/consolidate"
+      method: "POST"

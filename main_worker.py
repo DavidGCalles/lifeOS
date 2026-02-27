@@ -261,6 +261,7 @@ async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
 
+
 # --- Main Entrypoint ---
 if __name__ == "__main__":
     import uvicorn
