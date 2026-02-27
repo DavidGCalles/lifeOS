@@ -1,2 +1,7 @@
 POST http://localhost:8081/system/cron/consolidate
 X-Cron-Token: lifeos-cron-token
+
+###
+
+POST https://lifeos-worker-319986340006.europe-west1.run.app/system/cron/consolidate
+X-Cron-Token: lifeos-cron-token
