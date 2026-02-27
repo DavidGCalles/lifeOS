@@ -1,15 +1,23 @@
+''' Workers api'''
 import os
 import logging
-from fastapi import FastAPI, Request, Response, Depends, HTTPException
-from typing import Optional
-import asyncio
 import json
+from fastapi import FastAPI, Request, Depends, HTTPException
 from pydantic import ValidationError
 
 from src.memory_gateway import MemoryGateway
 from src.crew_orchestrator import CrewOrchestrator
-from src.schemas.memory import EpisodicMemoryItem, EpisodicMemoryMetadata, MemoryDomainType, MemoryVisibility, MemoryCategory, MemoryType, MemorySource
-from src.identity_manager import IdentityManager, UserContext, UserRole
+from src.schemas.memory import (
+    EpisodicMemoryItem,
+    EpisodicMemoryMetadata,
+    MemoryDomainType,
+    MemoryVisibility,
+    MemoryCategory,
+    MemoryType,
+    MemorySource,
+)
+from src.identity_manager import IdentityManager
+from src.system_status import SystemStatusManager
 
 
 # Configure logging
@@ -37,22 +45,45 @@ async def verify_cron_token(request: Request):
         # This is for local development convenience. In production, the token should always be set.
         logger.warning("Allowing request to worker endpoint without token verification.")
         return
-    
+
     token = request.headers.get("X-Cron-Token")
     if token != SYSTEM_CRON_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid or missing cron token")
 
+async def verify_system_readiness():
+    """
+    Dependency to verify that the system is in an optimal state for heavy tasks.
+    Checks for recent user activity and LLM proxy health.
+    """
+    if await SystemStatusManager.is_channel_active(time_window_minutes=5):
+        logger.warning("Aborting consolidation: Channel is active.")
+        raise HTTPException(
+            status_code=429,
+            detail="System is busy with user activity. Task deferred.",
+        )
+    if not await SystemStatusManager.is_llm_proxy_healthy():
+        logger.error("Aborting consolidation: LLM proxy is not healthy.")
+        raise HTTPException(
+            status_code=503,
+            detail="LLM proxy is not healthy. Task deferred.",
+        )
+
+
 # --- Worker Endpoints ---
-@app.post("/system/cron/consolidate", dependencies=[Depends(verify_cron_token)])
+@app.post(
+    "/system/cron/consolidate",
+    dependencies=[Depends(verify_cron_token),
+                  Depends(verify_system_readiness)],
+)
 async def consolidate_memory():
     """
     Endpoint to trigger memory consolidation with semantic deduplication.
     """
     logger.info("Received request to consolidate memory.")
-    
+
     # --- FASE 1: RECOLECCIÓN (Fetch Unconsolidated) ---
     unconsolidated_sessions = await memory_gateway.fetch_unconsolidated_sessions()
-    
+
     if not unconsolidated_sessions:
         return {"status": "success", "message": "No unconsolidated memories found."}
 
@@ -63,10 +94,13 @@ async def consolidate_memory():
     for session_id, messages in unconsolidated_sessions.items():
         if not messages:
             continue
-        
+
         owner_id = messages[0].get("metadata", {}).get("owner_id")
         if not owner_id:
-            logger.warning(f"Skipping session {session_id} due to missing owner_id in the first message.")
+            logger.warning(
+                "Skipping session %s due to missing owner_id in the first message.",
+                session_id,
+            )
             continue
 
         user_ctx = await IdentityManager.get_user(owner_id)
@@ -85,12 +119,15 @@ async def consolidate_memory():
                 clean_str = clean_str[7:]
             if clean_str.endswith("```"):
                 clean_str = clean_str[:-3]
-                
+
             extracted_facts = json.loads(clean_str.strip())
-            
+
             if not isinstance(extracted_facts, list):
-                logger.error(f"❌ El LLM no devolvió un array JSON para la sesión {session_id}. Output: {summary_json_str}")
-                continue
+                logger.error(
+                    "❌ El LLM no devolvió un array JSON para la sesión %s. Output: %s",
+                    session_id,
+                    summary_json_str,
+                )
 
             facts_saved_for_session = 0
             for item in extracted_facts:
@@ -106,7 +143,11 @@ async def consolidate_memory():
                         category=MemoryCategory(item.get("category", "personal_dev")),
                         type=MemoryType(item.get("type", "fact")),
                         source=MemorySource.AGENT_REFLECTION,
-                        context_tags=",".join(item.get("tags", [])) if isinstance(item.get("tags"), list) else str(item.get("tags", ""))
+                        context_tags=(
+                            ",".join(item.get("tags", []))
+                            if isinstance(item.get("tags"), list)
+                            else str(item.get("tags", ""))
+                        ),
                     )
 
                     # --- FASE 4: DEDUPLICACIÓN SEMÁNTICA (Escudo 2 - Vector Math) ---
@@ -117,24 +158,34 @@ async def consolidate_memory():
                             user_ctx=user_ctx,
                             query=fact_text,
                             limit=1,
-                            domain=MemoryDomainType.EPISODIC.value # Buscamos solo en recuerdos episódicos
+                            domain=MemoryDomainType.EPISODIC.value,
+                            # Buscamos solo en recuerdos episódicos
                         )
-                        
+
                         if existing_memories:
                             top_match = existing_memories[0]
                             similarity_score = top_match.score or 0.0
-                            
-                            # Umbral de corte: 0.88 suele ser óptimo para cosine similarity en e5/text-embedding
+
+                            # Umbral de corte: 0.88 suele ser óptimo para cosine similarity en
+                            # e5/text-embedding
                             if similarity_score > 0.88:
-                                logger.info(f"🔄 Recuerdo redundante omitido. "
-                                            f"Similitud: {similarity_score:.4f} "
-                                            f"Nuevo: '{fact_text}' | Existente: '{top_match.content}'")
+                                logger.info(
+                                    "🔄 Recuerdo redundante omitido. Similitud: %.4f "
+                                "Nuevo: '%s' | Existente: '%s'",
+                                    similarity_score,
+                                    fact_text,
+                                    top_match.content,
+                                )
                                 is_redundant = True
                                 total_facts_discarded += 1
                     except Exception as dedup_err:
-                        # Si la búsqueda falla (ej. Qdrant timeout temporal), preferimos guardar duplicado a perder datos
-                        logger.warning(f"⚠️ Error verificando redundancia para '{fact_text}': {dedup_err}")
-
+                        # Si la búsqueda falla (ej. Qdrant timeout temporal),
+                        # preferimos guardar duplicado a perder datos
+                        logger.warning(
+                            "⚠️ Error verificando redundancia para '%s': %s",
+                            fact_text,
+                            dedup_err,
+                        )
                     if is_redundant:
                         continue # Saltamos la inserción y pasamos al siguiente hecho
 
@@ -145,33 +196,59 @@ async def consolidate_memory():
                         created_by="system_worker"
                     )
 
-                    #await memory_gateway.save_semantic_memory(user_ctx, memory_item)
-                    logger.info(f"💾 NUEVO Hecho guardado [{metadata.category.value}]: {memory_item.content}")
+                    await memory_gateway.save_semantic_memory(user_ctx, memory_item)
+                    logger.info(
+                        "💾 NUEVO Hecho guardado [%s]: %s",
+                        metadata.category.value,
+                        memory_item.content,
+                    )
                     facts_saved_for_session += 1
                     total_facts_saved += 1
 
                 except ValueError as ve:
-                    logger.warning(f"⚠️ Categoría/Tipo inválido. Se descarta: {item}. Razón: {ve}")
+                    logger.warning(
+                        "⚠️ Categoría/Tipo inválido. Se descarta: %s. Razón: %s",
+                        item,
+                        ve,
+                    )
                     continue
                 except ValidationError as ve:
-                    logger.warning(f"⚠️ Alucinación de esquema. Se descarta: {item}. Razón: {ve}")
+                    logger.warning(
+                        "⚠️ Alucinación de esquema. Se descarta: %s. Razón: %s",
+                        item,
+                        ve,
+                    )
                     continue
 
             # --- FASE 6: CIERRE (Mark as Consolidated) ---
-            message_ids = [str(msg["message_id"]) for msg in messages if "message_id" in msg]
-            #await memory_gateway.mark_messages_as_consolidated(session_id, message_ids)
+            message_ids = [
+                str(msg["message_id"])
+                for msg in messages
+                if "message_id" in msg
+            ]
+            await memory_gateway.mark_messages_as_consolidated(session_id, message_ids)
 
-            processed_sessions.append({
-                "session_id": session_id,
-                "messages_processed": len(messages),
-                "facts_extracted": facts_saved_for_session
-            })
+            processed_sessions.append(
+                {
+                    "session_id": session_id,
+                    "messages_processed": len(messages),
+                    "facts_extracted": facts_saved_for_session,
+                }
+            )
 
         except json.JSONDecodeError:
-            logger.error(f"❌ El LLM no devolvió JSON parseable para la sesión {session_id}. Output: {summary_json_str}")
+            logger.error(
+                "❌ El LLM no devolvió JSON parseable para la sesión %s. Output: %s",
+                session_id,
+                summary_json_str,
+            )
 
-    logger.info(f"✅ Ciclo de consolidación terminado. Guardados: {total_facts_saved}, Descartados (Redundantes): {total_facts_discarded}")
-    
+    logger.info(
+        "✅ Ciclo de consolidación terminado. Guardados: %s, Descartados (Redundantes): %s",
+        total_facts_saved,
+        total_facts_discarded,
+    )
+
     return {
         "status": "success",
         "facts_saved": total_facts_saved,
