@@ -63,7 +63,7 @@ class SystemStatusManager:
         logger.info("Checking LiteLLM health at %s ...", health_url)
         is_healthy = False
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(health_url)
                 is_healthy = response.status_code == 200
         except httpx.RequestError as e:
