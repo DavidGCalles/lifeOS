@@ -13,6 +13,3 @@ class SystemStatus(BaseModel):
         default_factory=datetime.utcnow,
         description="The timestamp of the last detected user activity.",
     )
-    llm_proxy_healthy: bool = Field(
-        default=True, description="Health status of the LiteLLM proxy."
-    )

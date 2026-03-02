@@ -1,9 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import logging
 
-import httpx
-
-from src.config import get_litellm_health_url
 from src.memory_gateway import MemoryGateway
 from src.schemas.system_status import SystemStatus
 
@@ -53,28 +50,6 @@ class SystemStatusManager:
         now = datetime.now(timezone.utc)
         idle_delta = now - last_activity
         return int(idle_delta.total_seconds() / 60)
-
-    @staticmethod
-    async def is_llm_proxy_healthy() -> bool:
-        """
-        Performs a lightweight health check to the LiteLLM container.
-        """
-        health_url = get_litellm_health_url()
-        logger.info("Checking LiteLLM health at %s ...", health_url)
-        is_healthy = False
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(health_url)
-                is_healthy = response.status_code == 200
-        except httpx.RequestError as e:
-            logger.error("LiteLLM health check failed: %s", e)
-
-        status = await MemoryGateway.get_system_status()
-        if status:
-            status.llm_proxy_healthy = is_healthy
-            await MemoryGateway.update_system_status(status)
-
-        return is_healthy
 
     @staticmethod
     async def record_activity():

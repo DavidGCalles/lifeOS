@@ -11,10 +11,3 @@ def load_credentials():
     if not telegram_token:
         raise ValueError("❌ CRÍTICO: No se encontró TELEGRAM_TOKEN en el .env")
     return telegram_token
-
-def get_litellm_health_url():
-    """
-    Returns the URL for the LiteLLM health check.
-    """
-    load_dotenv()
-    return str(os.getenv("LITELLM_URL", "http://litellm:4000")+"/health")
