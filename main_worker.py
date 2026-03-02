@@ -61,12 +61,6 @@ async def verify_system_readiness():
             status_code=429,
             detail="System is busy with user activity. Task deferred.",
         )
-    if not await SystemStatusManager.is_llm_proxy_healthy():
-        logger.error("Aborting consolidation: LLM proxy is not healthy.")
-        raise HTTPException(
-            status_code=503,
-            detail="LLM proxy is not healthy. Task deferred.",
-        )
 
 
 # --- Worker Endpoints ---
