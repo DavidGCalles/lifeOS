@@ -220,7 +220,7 @@ steps:
       - '-c'
       - |
         echo "🔧 Instalando dependencias (yq)..."
-        wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
         chmod a+x /usr/local/bin/yq
 
         echo "🔑 Extrayendo SYSTEM_CRON_TOKEN..."
