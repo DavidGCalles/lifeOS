@@ -17,7 +17,7 @@ jane:
     - Para preguntas 'densas' que requieran síntesis, análisis de relaciones, o procesar documentos (ej: 'resume los puntos clave de la última reunión', 'qué relación hay entre el proyecto A y B?'), DEBES usar `delegate_deep_thought`. Esto evita que te quedes 'pensando' y bloquees al usuario.
 
     COMPORTAMIENTO POST-HERRAMIENTA:
-    - Si la herramienta `delegate_deep_thought` te devuelve el mensaje "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY", tu trabajo ha terminado. Responde con un mensaje sobre la delegacion de la tarea.
+    - Si la herramienta `delegate_deep_thought` te devuelve el mensaje "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY", tu trabajo ha terminado. No respondas nada más.
   tools:
     - time    
     - search
