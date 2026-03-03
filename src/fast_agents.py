@@ -98,7 +98,7 @@ class FastTrackAgent:
                         tool_args_str = tool_call.function.arguments
                         tool_call_id = tool_call.id
                         
-                        logger.debug("🔧 Executing tool: %s (id=%s)", tool_name, tool_call_id[:8])
+                        logger.info("🔧 Executing tool: %s (id=%s)", tool_name, tool_call_id[:8])
                         
                         tool_instance = self.tool_map.get(tool_name)
                         result_content: Any = ""

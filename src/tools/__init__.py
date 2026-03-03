@@ -2,6 +2,7 @@ from .time_tool import TimeCheckTool
 from .calculator_tool import CalculatorTool
 from .search_tool import WebSearchTool
 from .memory_tool import RememberTool, RecallTool, ForgetTool
+from .delegation_tool import DelegateDeepThoughtTool
 from .profile_tool import SetCalendarIDTool
 from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool, CalendarUpdateTool
 from .google_drive_tool import DriveSearchTool, DriveReadTool
@@ -15,7 +16,7 @@ MEMORY_KIT = {
 }
 
 CALENDAR_KIT = {
-    "set_email": SetCalendarIDTool(),
+    "set_calendar_id": SetCalendarIDTool(),
     "calendar_list": CalendarListTool(),
     "calendar_add": CalendarAddTool(),
     "calendar_remove": CalendarDeleteTool(),
@@ -33,6 +34,7 @@ TOOL_MAPPING = {
     'time': TimeCheckTool(),
     'math': CalculatorTool(),
     'search': WebSearchTool(),
+    'delegate_deep_thought': DelegateDeepThoughtTool(),
     'memory_core': MEMORY_KIT,
     'calendar_core': CALENDAR_KIT,
     'drive_core': DRIVE_KIT,

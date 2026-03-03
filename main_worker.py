@@ -3,7 +3,7 @@ import os
 import logging
 import json
 from fastapi import FastAPI, Request, Depends, HTTPException
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from src.memory_gateway import MemoryGateway
 from src.crew_orchestrator import CrewOrchestrator
@@ -26,8 +26,11 @@ logger = logging.getLogger(__name__)
 
 # --- Configuration ---
 SYSTEM_CRON_TOKEN = os.getenv("SYSTEM_CRON_TOKEN")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
 if not SYSTEM_CRON_TOKEN:
-    logger.warning("SYSTEM_CRON_TOKEN is not set. Worker endpoints will be insecure.")
+    logger.warning("SYSTEM_CRON_TOKEN is not set. Worker cron endpoints will be insecure.")
+if not INTERNAL_API_KEY:
+    logger.warning("INTERNAL_API_KEY is not set. Worker task endpoints will be insecure.")
 
 # --- Globals ---
 memory_gateway = MemoryGateway()
@@ -37,18 +40,28 @@ orchestrator = CrewOrchestrator(memory_gateway=memory_gateway)
 # --- FastAPI App ---
 app = FastAPI()
 
-# --- Security Dependency ---
+# --- Security Dependencies ---
 async def verify_cron_token(request: Request):
-    """Dependency to verify the cron token."""
+    """Dependency to verify the cron token for scheduled tasks."""
     if not SYSTEM_CRON_TOKEN:
-        # Allow access if the token is not set, but log a warning.
-        # This is for local development convenience. In production, the token should always be set.
-        logger.warning("Allowing request to worker endpoint without token verification.")
+        logger.warning("Allowing cron request without token verification (dev mode).")
         return
-
     token = request.headers.get("X-Cron-Token")
     if token != SYSTEM_CRON_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid or missing cron token")
+
+async def verify_internal_api_key(request: Request):
+    """Dependency to verify the internal API key for inter-service calls."""
+    if not INTERNAL_API_KEY:
+        logger.warning("Allowing internal request without API key verification (dev mode).")
+        return
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Invalid or missing Authorization header")
+    token = auth_header.split(" ")[1]
+    if token != INTERNAL_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid internal API key")
+
 
 async def verify_system_readiness():
     """
@@ -249,6 +262,27 @@ async def consolidate_memory():
         "facts_discarded_as_redundant": total_facts_discarded,
         "data": processed_sessions
     }
+
+class DeepThoughtRequest(BaseModel):
+    user_id: str
+    session_id: str
+    user_request: str
+
+@app.post("/system/tasks/deep_analysis", dependencies=[Depends(verify_internal_api_key)])
+async def deep_analysis_task(request: DeepThoughtRequest):
+    """
+    Endpoint to handle complex, long-running tasks delegated by other agents.
+    It's protected by an internal API key.
+    """
+    logger.info(f"Received deep analysis task for user {request.user_id} in session {request.session_id}")
+    # Here you would add the logic to process the complex request,
+    # for example, by running a CrewAI task, doing complex database queries, etc.
+    # For now, we just acknowledge the reception.
+    
+    # This part of the code will be responsible for executing the intensive 
+    # retrieval/synthesis without blocking the Fast Track webhook.
+    
+    return {"status": "received", "message": "Task is being processed in the background."}
 
 @app.get("/health")
 async def health_check():

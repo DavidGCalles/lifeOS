@@ -86,8 +86,9 @@ class RememberTool(BaseTool):
 class RecallTool(BaseTool):
     name: str = "search_memory"
     description: str = (
-        "Use this tool to retrieve past context, decisions, or facts about the user "
-        "or projects. Useful when you need to answer 'What did we say about X?'."
+        "Use for superficial, low-latency factual retrieval. Good for quick questions "
+        "like 'what is my auth token for API X' or 'what is the project budget'. "
+        "For complex questions requiring synthesis, use `delegate_deep_thought`."
     )
     args_schema: type[BaseModel] = RecallInput
     _current_user: UserContext | None = None

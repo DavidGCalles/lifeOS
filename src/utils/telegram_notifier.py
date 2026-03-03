@@ -79,3 +79,20 @@ class TelegramNotifier:
         except Exception as e:
             logger.debug(f"⚠️ Error sending Telegram: {type(e).__name__}")
             return False
+            
+    @classmethod
+    async def send_message(cls, telegram_id: str | int, message: str) -> bool:
+        """
+        Sends a simple text message to a user.
+        """
+        bot = cls._get_bot()
+        if not bot:
+            return False
+
+        try:
+            await bot.send_message(chat_id=telegram_id, text=message)
+            logger.info(f"✅ Simple message sent to {telegram_id}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to send simple message to {telegram_id}: {e}")
+            return False
