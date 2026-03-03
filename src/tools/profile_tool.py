@@ -1,5 +1,5 @@
 from crewai.tools import BaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 from email_validator import validate_email, EmailNotValidError
 from src.identity_manager import IdentityManager, UserContext
 import logging
@@ -19,9 +19,8 @@ class SetCalendarIDTool(BaseTool):
         "Logic: Validates format -> Saves to Firestore."
     )
     args_schema: type[BaseModel] = SetEmailInput
-    
-    # Estado interno (Contexto)
-    _current_user: UserContext | None = None
+    _current_user: UserContext | None = PrivateAttr(default=None)
+
 
     def set_context(self, user: UserContext):
         """Inyecta el usuario actual (necesario para saber qué ID actualizar en DB)."""
@@ -32,6 +31,7 @@ class SetCalendarIDTool(BaseTool):
             logger.warning("INSIDE TRY")
             logger.info("📧 SetCalendarIDTool invoked with email: %s", email)
             if not self._current_user:
+                logger.error("No user context set for SetCalendarIDTool.")
                 return "❌ Error: No user context identified."
 
             # 1. Validación (igual)

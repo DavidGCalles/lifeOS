@@ -77,7 +77,8 @@ class CrewOrchestrator:
                 exec_start = time.time()
                 raw_response = await dispatcher.execute(
                     user_message=user_message, 
-                    context=routing_context
+                    context=routing_context,
+                    user_context=user # Pasamos el UserContext al FastTrackAgent
                 )
                 exec_elapsed = time.time() - exec_start
                 logger.info("📤 Dispatcher responded in %.2fs (len=%d)", exec_elapsed, len(str(raw_response)))

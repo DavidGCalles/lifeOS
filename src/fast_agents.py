@@ -3,7 +3,9 @@ import logging
 import asyncio
 import inspect
 from typing import Any
+from pydantic import PrivateAttr
 from src.utils.tool_converter import convert_tools_to_openai_schema
+from src.identity_manager import UserContext
 from src.utils.llm_router import LiteLLMRouter
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,8 @@ class FastTrackAgent:
     Soporta inputs multimodales (Texto + Imagen) nativamente.
     """
     is_fast_agent = True
+
+    _current_user: UserContext | None = PrivateAttr(default=None)
 
     def __init__(self, role: str, goal: str, backstory: str, tools: list[Any] | None = None, verbose: bool = False, model_name: str = "crewai-proxy", **kwargs):
         self.role = role
@@ -26,15 +30,19 @@ class FastTrackAgent:
         self.openai_tools = convert_tools_to_openai_schema(self.tools) if self.tools else None
         self.tool_map = {t.name: t for t in self.tools}
 
-    async def execute(self, user_message: str | list[dict[str, Any]], context: str | None = None) -> str:
+    async def execute(self, user_message: str | list[dict[str, Any]], context: str | None = None, user_context: UserContext | None = None) -> str:
         """
         Ejecuta el ciclo de pensamiento.
         Args:
             user_message: Puede ser un string (texto plano) o una lista de dicts (OpenAI Multimodal format).
             context: Información adicional (Identidad, Historial) que se inyecta en el System Prompt.
+            user_context: Objeto UserContext con la información del usuario actual.
         """
         logger.info("⚡ Fast Agent execution: role='%s' model=%s input_type=%s", self.role, self.model_name, type(user_message).__name__)
         
+        # Establecer el contexto del usuario en el agente
+        self._current_user = user_context
+        logger.info(f"👤 UserContext set in agent: telegram_id={user_context.telegram_id if user_context else 'None'}")
         # 1. Construcción del System Prompt
         system_prompt = (
             f"ROLE: {self.role}\n"
@@ -47,7 +55,7 @@ class FastTrackAgent:
         # Inyectamos el contexto en el System Prompt para mantener limpio el mensaje del usuario
         if context:
             system_prompt += f"\n\n[RUNTIME CONTEXT]\n{context}"
-            logger.debug("📌 Context injected (len=%d)", len(context))
+            logger.info("📌 Context injected (len=%d)", len(context))
 
         # 2. Construcción de mensajes
         # Si user_message es una lista, se pasa tal cual. LiteLLM se encarga del resto.
@@ -110,6 +118,11 @@ class FastTrackAgent:
                             try:
                                 args = json.loads(tool_args_str)
                                 logger.debug("📥 Tool args parsed: %s", list(args.keys()))
+                                
+                                # Inyectar el contexto de usuario si la herramienta lo soporta
+                                if hasattr(tool_instance, "set_context") and self._current_user:
+                                    tool_instance.set_context(self._current_user)
+                                    logger.debug("👤 UserContext injected into tool: %s", tool_name)
                                 
                                 # Detección robusta de corrutinas
                                 is_async = inspect.iscoroutinefunction(tool_instance.run) or \

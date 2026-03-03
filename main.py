@@ -37,38 +37,6 @@ ADMIN_USER_ID = os.getenv('ADMIN_USER_ID')
 memory_gateway = MemoryGateway()
 orchestrator = CrewOrchestrator(memory_gateway=memory_gateway)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Context manager to run startup and shutdown logic."""
-    # This part runs when the application starts up
-    loop = asyncio.get_running_loop()
-    install_grpc_noise_filter(loop)
-    
-    # Initialize and start the Sensory Cortex in the background
-    cortex = SensoryCortex.get_instance()
-    # Initialize drivers
-    visual_driver = VisualDriver()
-    audio_driver = AudioDriver()
-    document_driver = DocumentDriver()
-    # Register drivers
-    cortex.register_driver("photo", visual_driver)
-    cortex.register_driver("voice", audio_driver)
-    cortex.register_driver("document", document_driver)
-    
-    cortex_task = asyncio.create_task(cortex.run_forever())
-    
-    yield
-    
-    # This part runs when the application shuts down
-    cortex_task.cancel()
-    try:
-        await cortex_task
-    except asyncio.CancelledError:
-        logging.getLogger(__name__).info("Sensory Cortex shutdown complete.")
-
-app = FastAPI(lifespan=lifespan)
-
-
 # --- Lógica del Bot ---
 async def send_smart_response(update: Update, text: str) -> Message | None:
     """
@@ -230,6 +198,7 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 bypass_context = f"User replying to: '{parent_meta.get('content', '...')}'."
 
         if not target_agent:
+            logging.info("Sending to orchestrator.route_request with current_user.telegram_id=%s", current_user.telegram_id)
             target_agent = await orchestrator.route_request(user_input, current_user)
         
         # LOGGING (SANITIZED)
