@@ -28,8 +28,7 @@ class SetCalendarIDTool(BaseTool):
 
     async def _run(self, email: str) -> str:
         try:
-            logger.warning("INSIDE TRY")
-            logger.info("📧 SetCalendarIDTool invoked with email: %s", email)
+            logger.debug("📧 SetCalendarIDTool invoked with email: %s", email)
             if not self._current_user:
                 logger.error("No user context set for SetCalendarIDTool.")
                 return "❌ Error: No user context identified."
@@ -46,7 +45,6 @@ class SetCalendarIDTool(BaseTool):
                 self._current_user.telegram_id, 
                 {"calendar_id": normalized_email}
             )
-            logger.warning("AFTER DB UPDATE ATTEMPT, SUCCESS=%s", success)
             if success:
                 # --- FIX CRÍTICO: ACTUALIZACIÓN EN MEMORIA ("HOT PATCH") ---
                 # Esto actualiza la referencia compartida que usan las otras tools
@@ -55,11 +53,9 @@ class SetCalendarIDTool(BaseTool):
                 
                 logger.info(f"🔄 Context Hot-Reload: {previous_email} -> {normalized_email}")
                 # -----------------------------------------------------------
-                logger.warning("INSIDE SUCCESS")
                 return (f"✅ Success: Linked email '{normalized_email}'. "
                         "I have updated my internal records instantly. You can now access the calendar.")
             else:
-                logger.warning("INSIDE DB FAILURE")
                 return "❌ Error: Database update failed."
         except Exception as e:
             logger.error("Unexpected error in SetCalendarIDTool: %s", str(e))
