@@ -6,7 +6,7 @@
 | **Version** | 1.1 |
 | **Owner** | David G. Calles |
 | **Status** | Living Specification |
-| **Related Documents** | Vision Document v3.0, Architecture Decision Records (001-012) |
+| **Related Documents** | Vision Document v3.0, Architecture Decision Records (001-015) |
 
 ---
 
@@ -38,8 +38,9 @@ The system implements strict access control (RBAC) to protect the core.
 
 ### 3.1 Interface and Ubiquity
 * **FR-01 (Zero-Friction Entry):** The primary entry point is instant messaging (Telegram) without explicit login, authenticating via User ID.
-* **FR-02 (Multimodal Intent Routing & Two Speed):** The system is not text-only; it possesses a **Sensory Cortex** to perceive reality through different channels.
-    * **Fast/Slow Track:** Classifies intent in <200ms to decide execution lane (Immediate vs Deep Reasoning).
+* **FR-02 (Multimodal Intent Routing & Two Speed):** The system implements a **Two-Stage Routing Architecture** (ADR-015) to optimize latency and cost.
+    * **Stage 1 (Zero-Shot Reflex):** Text inputs are classified by a local NLI model (<50ms). High-confidence matches route instantly without LLM inference.
+    * **Stage 2 (Deep Reasoning Fallback):** Low-confidence text and **Visual Inputs** fallback to the LLM (LiteLLM) for deep semantic analysis.
     * **Visual Pathway (Eyes):** Native support for images (compressed/resized on the edge). The Router "sees" the image to dispatch (e.g., Photo of Fridge -> Kitchen Agent).
     * **Auditory Pathway (Ears):** Native handling of Voice Notes. Audio is normalized (ffmpeg) and transcribed verbatim before reaching the reasoning core.
 * **FR-16 (Group Social Protocol):** Rules of engagement for collective spaces (`groups`, `supergroups`).
@@ -74,6 +75,14 @@ The system operates through specialists configurable via YAML:
     * **Remote Access (Cloud Drive):** The system must be able to resolve and access URLs pointing to authorized cloud documents (e.g., Google Docs/Drive) found within Calendar events (e.g., "Read briefing before meeting") or chat messages.
     * **Content Synthesis:** When presented with a large document, the system must be able to generate summaries, extract action items, or answer specific questions based *strictly* on the document's content (Grounding).
 
+### 3.5 Background Operations (The Subconscious)
+*The system maintains a continuous background processing layer to handle maintenance, deep thinking, and proactivity without blocking real-time interactions.*
+
+* **FR-18 (Asynchronous Worker Backbone):** The system implements a "One Image, Two Faces" architecture (ADR-014), separating the **Synchronous Interface** (Bot) from the **Asynchronous Worker**.
+    *   **Proactivity:** The Worker executes scheduled tasks (Cron Jobs) to initiate conversations, reminders, or status checks without waiting for user input.
+    *   **Heavy Lifting:** Handles token-intensive tasks like Memory Consolidation, Vector Indexing, and Document Analysis off the main thread.
+    *   **System State Awareness:** The Worker actively consults `SystemStatus` before execution. It yields resources during active user sessions to guarantee the responsiveness of the Fast Track on limited local hardware.
+
 ---
 
 ## 4. Execution Capabilities (Effectors)
@@ -97,7 +106,7 @@ This section defines how the system impacts reality ("Skin in the Game").
 ### 5.1 Resilience and Infrastructure
 * **NFR-01 (Model Agnosticism):** Total decoupling from the LLM provider via Proxy (LiteLLM).
 * **NFR-02 (Local Fallback - *Target*):** Ability to degrade to a local model (Ollama/Llama) if the cloud goes down.
-
 ### 5.2 Privacy and Security
+
 * **NFR-03 (Self-Hosted Storage):** All memory vectors and session logs must reside in user-controlled Docker volumes.
 * **NFR-04 (Encrypted Vault - *Target*):** The biographical database must be encrypted at rest.
