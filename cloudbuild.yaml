@@ -155,6 +155,7 @@ steps:
       - '--cpu-boost'
       - '--timeout=600'
       - '--allow-unauthenticated'
+      - '--args=--model-id,/data/model,--model-id,/data/nli_model'
     id: 'deploy-embeddings'
     waitFor: ['push-embeddings']
 
