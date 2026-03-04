@@ -156,7 +156,7 @@ steps:
       - '--timeout=600'
       - '--allow-unauthenticated'
       - '--command=sh'
-      - '--args=^|^-c|^infinity_emb --model-id /data/model --model-id /data/nli_model'
+      - '--args=-c,infinity_emb --model-id /data/model --model-id /data/nli_model'
     id: 'deploy-embeddings'
     waitFor: ['push-embeddings']
 
