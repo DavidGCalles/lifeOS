@@ -7,8 +7,11 @@ WORKDIR /app
 # cloudbuild.yaml se encarga de descargarlo desde GCS.
 COPY models/e5-small-sanitized /data/model
 
+# 2.b. Copiamos el modelo NLI hidratado.
+COPY models/nli-model /data/nli_model
+
 # 3. Permisos
-RUN chmod -R 777 /data/model
+RUN chmod -R 777 /data/model /data/nli_model
 
 # 4. MODO OFFLINE - Evita que el contenedor intente conectar a HuggingFace
 ENV HF_HUB_OFFLINE=1
