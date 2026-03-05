@@ -8,14 +8,15 @@ class InfinityClient:
         if not self.api_key:
             raise ValueError("INFINITY_API_KEY environment variable not set.")
 
-    def classify(self, text: str, candidate_labels: list[str]):
+    def classify(self, input_texts: list[str], model: str = "data/nli_model", raw_scores: bool = False):
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
         payload = {
-            "text": text,
-            "candidate_labels": candidate_labels
+            "model": model,
+            "input": input_texts,
+            "raw_scores": raw_scores
         }
         try:
             response = requests.post(f"{self.base_url}/classify", headers=headers, json=payload)
@@ -31,10 +32,9 @@ if __name__ == "__main__":
     # export INFINITY_API_KEY="your_api_key_here"
     client = InfinityClient()
     
-    test_text = "I want to add milk to my grocery list."
-    test_labels = ["add_grocery", "set_reminder", "general_chat"]
+    test_texts = ["I am not having a great day."]
     
-    result = client.classify(test_text, test_labels)
+    result = client.classify(test_texts)
     
     if result:
         print("Classification Result:")
