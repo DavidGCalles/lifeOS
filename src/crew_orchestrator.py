@@ -63,6 +63,9 @@ class CrewOrchestrator:
         try:
             start_time = time.time()
             public_labels = self.agents.get_public_agent_names()
+            # Look for jane and add "general" to that to increase chances of matching
+            if 'jane' in public_labels:
+                public_labels.append('general')
             # Run classification in a thread to avoid blocking the event loop
             scores = await asyncio.to_thread(self.zero_shot_client.classify, user_message, public_labels)
             
@@ -87,11 +90,11 @@ class CrewOrchestrator:
                     margin_pass = False
                     logger.info("⚠️ Zero-Shot Margin too low: %.2f vs %.2f", top_score, second_score)
             
-            # Confidence check (> 0.85)
-            if top_score > 0.85 and margin_pass:
+            # Confidence check (> 0.5)
+            if top_score > 0.5 and margin_pass:
                 elapsed = time.time() - start_time
                 logger.info("⚡ Zero-Shot Selected: %s (score=%.2f) in %.2fs", top_agent.upper(), top_score, elapsed)
-                return top_agent.upper()
+                return "JANE" if top_agent.upper() == "GENERAL" else top_agent.upper()
             
             logger.info("ℹ️ Zero-Shot Confidence Low: %.2f (or margin fail). Fallback to Router.", top_score)
             return None
