@@ -9,6 +9,7 @@ src/config/users.json
 src/config/credentials.json
 !src/  # Excepción: no ignorar JSONs que sean parte del código fuente real
 models/
+htmlcov/
 
 # --- 🐍 PYTHON BASURA (Compilados y caché) ---
 src/__pycache__/
@@ -40,3 +41,4 @@ data/qdrant/
 # --- LITELLM (Opcional) ---
 # Si decides guardar datos de costes locales
 litellm_data/
+.coverage

@@ -12,7 +12,6 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 from telegram.error import TelegramError
 import asyncio
 
-from src.config import load_credentials
 from src.crew_orchestrator import CrewOrchestrator
 from src.memory_gateway import MemoryGateway
 from src.identity_manager import IdentityManager, UserRole
@@ -27,7 +26,7 @@ from src.sensory.drivers.audio_driver import AudioDriver
 
 configure_logging()
 
-TELEGRAM_TOKEN = load_credentials()
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 RUN_MODE = os.getenv('RUN_MODE', 'polling').lower()
 PORT = int(os.getenv('PORT', '8080'))
