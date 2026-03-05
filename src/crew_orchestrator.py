@@ -12,6 +12,7 @@ from src.tasks import LifeOSTasks
 from src.identity_manager import UserContext 
 from src.memory_gateway import MemoryGateway
 from src.schemas.memory import MemoryCategory, MemoryType
+from src.utils.zero_shot_client import ZeroShotClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class CrewOrchestrator:
         self.agents = LifeOSAgents()
         self.tasks = LifeOSTasks()
         self.memory_gateway = memory_gateway
+        self.zero_shot_client = ZeroShotClient()
 
     def _format_identity_context(self, user: UserContext | None) -> str:
         if not user: return ""
@@ -53,6 +55,51 @@ class CrewOrchestrator:
                     pass
         return None
 
+    async def _zero_shot_routing(self, user_message: str) -> str | None:
+        """
+        Intenta enrutar usando clasificación Zero-Shot (rápida).
+        Retorna el nombre del agente si la confianza es alta, o None.
+        """
+        try:
+            start_time = time.time()
+            public_labels = self.agents.get_public_agent_names()
+            # Run classification in a thread to avoid blocking the event loop
+            scores = await asyncio.to_thread(self.zero_shot_client.classify, user_message, public_labels)
+            
+            if not scores:
+                logger.warning("⚠️ Zero-Shot returned no scores.")
+                return None
+
+            # Sort scores descending
+            sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+            
+            # Log all probabilities
+            logger.info("📊 Zero-Shot Probabilities: %s", json.dumps(sorted_scores))
+            
+            top_agent, top_score = sorted_scores[0]
+            
+            # Margin check (Threshold between top 1 and top 2)
+            margin_pass = True
+            if len(sorted_scores) > 1:
+                second_score = sorted_scores[1][1]
+                # Using 0.05 as margin threshold (5% difference)
+                if (top_score - second_score) < 0.05:
+                    margin_pass = False
+                    logger.info("⚠️ Zero-Shot Margin too low: %.2f vs %.2f", top_score, second_score)
+            
+            # Confidence check (> 0.85)
+            if top_score > 0.85 and margin_pass:
+                elapsed = time.time() - start_time
+                logger.info("⚡ Zero-Shot Selected: %s (score=%.2f) in %.2fs", top_agent.upper(), top_score, elapsed)
+                return top_agent.upper()
+            
+            logger.info("ℹ️ Zero-Shot Confidence Low: %.2f (or margin fail). Fallback to Router.", top_score)
+            return None
+
+        except Exception as e:
+            logger.error("❌ Zero-Shot Classification Error: %s", e)
+            return None
+
     async def route_request(self, user_message: str | list[dict[str, Any]], user: UserContext | None = None) -> str:
         """
         Enruta la petición haciendo Hot-Swap de modelo si es necesario.
@@ -60,6 +107,15 @@ class CrewOrchestrator:
         start_time = time.time()
         logger.info("🚦 Routing initiated: user=%s message_type=%s", user.telegram_id if user else "unknown", type(user_message).__name__)
         
+        # --- STAGE 1: Zero-Shot Routing (Text Only) ---
+        if isinstance(user_message, str):
+            result = await self._zero_shot_routing(user_message)
+            if result:
+                return result
+            else:
+                logger.info("Zero-Shot routing failed. Fallback to Classic Router.")
+
+        # --- STAGE 2: Classic Router Fallback ---
         dispatcher = self.agents.create_agent('dispatcher')
         
         # 1. DETECCIÓN MULTIMODAL

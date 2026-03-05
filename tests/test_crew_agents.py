@@ -89,6 +89,26 @@ class TestLifeOSAgents(unittest.TestCase):
         self.assertIn("AGENT1: Goal 1", summary)
         self.assertNotIn("AGENT2", summary) # agent2 is not public
 
+    def test_get_public_agent_names(self):
+        """Test retrieving names of public agents."""
+        agents_factory = LifeOSAgents()
+        
+        # Mock configuration with mixed public/private settings
+        agents_factory.config = {
+            'agent1': {'public': True},
+            'agent2': {'public': False},
+            'agent3': {'public': True},
+            'agent4': {} # Default to False if missing
+        }
+        
+        public_names = agents_factory.get_public_agent_names()
+        
+        self.assertIn('agent1', public_names)
+        self.assertNotIn('agent2', public_names)
+        self.assertIn('agent3', public_names)
+        self.assertNotIn('agent4', public_names)
+        self.assertEqual(len(public_names), 2)
+
     @patch('src.crew_agents.Agent')
     @patch('src.crew_agents.llm')
     def test_create_agent_crew_mode(self, mock_llm, mock_agent_class):

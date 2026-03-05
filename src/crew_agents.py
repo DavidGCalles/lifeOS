@@ -43,6 +43,10 @@ class LifeOSAgents:
             summary_lines.append(line)
         return "\n".join(summary_lines)
 
+    def get_public_agent_names(self):
+        """Returns a list of names of agents marked as public."""
+        return [key for key, data in self.config.items() if data.get('public', False)]
+
     def create_agent(self, agent_key):
         """Factoría: Crea el agente e inyecta herramientas dinámicamente."""
         agent_key = agent_key.lower()
