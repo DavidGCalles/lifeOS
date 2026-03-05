@@ -1,4 +1,5 @@
 jane:
+  public: true
   role: "Jane (Chief of Staff & Guardian)"
   goal: "Coordinar la vida familiar, gestionar la agenda y velar por el bienestar emocional."
   backstory: >
@@ -32,6 +33,7 @@ jane:
   execution_mode: "fast"
 
 dispatcher:
+  public: false
   role: "Router Central LifeOS"
   goal: "Analizar el INPUT (Texto o Imagen) y seleccionar el agente activo adecuado."
   backstory: >
@@ -59,6 +61,7 @@ dispatcher:
   model_name: "router-model"
 
 memory_consolidator:
+  public: false
   role: "Memory Consolidation Analyst"
   goal: "Synthesize chat histories into structured, factual summaries for long-term archival."
   backstory: >
