@@ -46,6 +46,14 @@ class LifeOSAgents:
     def get_public_agent_names(self):
         """Returns a list of names of agents marked as public."""
         return [key for key, data in self.config.items() if data.get('public', False)]
+    
+    def get_zero_shot_hypothesis(self):
+        """Returns a dictionary mapping agent keys to their zero-shot hypothesis templates."""
+        hypotheses = {}
+        for key, data in self.config.items():
+            if 'zero_shot_hypothesis' in data and data.get('public', False):
+                hypotheses[key] = data['zero_shot_hypothesis']
+        return hypotheses
 
     def create_agent(self, agent_key):
         """Factoría: Crea el agente e inyecta herramientas dinámicamente."""

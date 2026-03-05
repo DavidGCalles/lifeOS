@@ -63,11 +63,19 @@ class CrewOrchestrator:
         try:
             start_time = time.time()
             public_labels = self.agents.get_public_agent_names()
-            # Look for jane and add "general" to that to increase chances of matching
-            if 'jane' in public_labels:
-                public_labels.append('general')
+            hipotheses = self.agents.get_zero_shot_hypothesis()
+
+            # Create reverse mapping: hypothesis text -> agent key
+            hypothesis_to_agent = {v: k for k, v in hipotheses.items()}
+
             # Run classification in a thread to avoid blocking the event loop
-            scores = await asyncio.to_thread(self.zero_shot_client.classify, user_message, public_labels)
+            # We use hypothesis_template="{}" so the model sees the raw hypothesis text
+            scores = await asyncio.to_thread(
+                self.zero_shot_client.classify, 
+                user_message, 
+                list(hipotheses.values()), 
+                hypothesis_template="{}"
+            )
             
             if not scores:
                 logger.warning("⚠️ Zero-Shot returned no scores.")
@@ -75,9 +83,21 @@ class CrewOrchestrator:
 
             # Sort scores descending
             sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-            
+            logger.info(f"Zero-Shot raw scores: {sorted_scores}")
+            # Relate back to agent keys using the reverse mapping
+            mapped_scores = []
+            for hypothesis, score in sorted_scores:
+                agent_key = hypothesis_to_agent.get(hypothesis)
+                if agent_key and agent_key in self.agents.config:
+                    mapped_scores.append((agent_key, score))
+            sorted_scores = mapped_scores
+
             # Log all probabilities
             logger.info("📊 Zero-Shot Probabilities: %s", json.dumps(sorted_scores))
+            
+            if not sorted_scores:
+                logger.info("ℹ️ Zero-Shot: No valid agent matches found.")
+                return None
             
             top_agent, top_score = sorted_scores[0]
             
