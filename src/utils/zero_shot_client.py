@@ -2,10 +2,9 @@
 the premise/hypothesis pairs and routing the classification request to the InfinityClient.
 It abstracts away the details of how the NLI model expects input and how to interpret the
 results, providing a simple interface for zero-shot classification tasks.'''
-
-from src.utils.infinity_client import InfinityClient
 import logging
 import time
+from src.utils.infinity_client import InfinityClient
 
 logger = logging.getLogger(__name__)
 
@@ -56,22 +55,20 @@ class ZeroShotClient:
             return None
 
         start_time = time.time()
-        logger.info(f"ZeroShotClient: Classifying text against {len(labels)} labels...")
+        logger.info("ZeroShotClient: Classifying text against %d labels...", len(labels))
 
         inputs = self._construct_pairs(text, labels, hypothesis_template)
         # Use InfinityClient to classify
         response_json = self.client.classify(inputs)
-        
         elapsed = time.time() - start_time
-        
         if not response_json:
-            logger.debug(f"ZeroShotClient: Classification failed (no response) in {elapsed:.2f}s")
+            logger.debug("ZeroShotClient: Classification failed (no response) in %.2f}s", elapsed)
             return None
 
-        logger.info(f"ZeroShotClient: Classification completed in {elapsed:.2f}s")
+        logger.info("ZeroShotClient: Classification completed in %.2f}s", elapsed)
 
         results = response_json.get("data") if isinstance(response_json, dict) else response_json
-        logger.debug(f"ZeroShotClient: Raw classification results: {results}")
+        logger.debug("ZeroShotClient: Raw classification results: %s", results)
         if not isinstance(results, list):
             return None
 

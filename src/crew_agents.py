@@ -46,7 +46,6 @@ class LifeOSAgents:
     def get_public_agent_names(self):
         """Returns a list of names of agents marked as public."""
         return [key for key, data in self.config.items() if data.get('public', False)]
-    
     def get_zero_shot_hypothesis(self):
         """Returns a dictionary mapping agent keys to their zero-shot hypothesis templates."""
         hypotheses = {}
