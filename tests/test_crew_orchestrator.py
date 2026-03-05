@@ -1,5 +1,9 @@
 import pytest
 import asyncio
+
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from src.crew_orchestrator import CrewOrchestrator
 from src.memory_gateway import MemoryGateway
 from src.identity_manager import UserContext, UserRole
