@@ -1,21 +1,27 @@
-from typing import List, Dict, Any, Optional
+'''Zero Shot Client for NLI Classification. This layer is responsible for constructing
+the premise/hypothesis pairs and routing the classification request to the InfinityClient.
+It abstracts away the details of how the NLI model expects input and how to interpret the
+results, providing a simple interface for zero-shot classification tasks.'''
+
 from src.utils.infinity_client import InfinityClient
 
 class ZeroShotClient:
-    def __init__(self, infinity_client: Optional[InfinityClient] = None):
+    '''Client for performing zero-shot classification using an NLI model via InfinityClient.'''
+    def __init__(self, infinity_client: InfinityClient | None = None):
         self.client = infinity_client or InfinityClient()
 
-    def _construct_pairs(self, text: str, labels: List[str], hypothesis_template: str = "This example is {}.") -> List[str]:
+    def _construct_pairs(self, text: str, labels: list[str],
+                         hypothesis_template: str = "This example is {}.") -> list[str]:
         """
         Constructs the premise/hypothesis pairs for NLI classification.
         
         Args:
             text (str): The input text (premise).
-            labels (List[str]): The list of candidate labels.
+            labels (list[str]): The list of candidate labels.
             hypothesis_template (str): Template for the hypothesis.
             
         Returns:
-            List[str]: A list of strings formatted as 'premise [SEP] hypothesis'.
+            list[str]: A list of strings formatted as 'premise [SEP] hypothesis'.
         """
         pairs = []
         for label in labels:
@@ -25,17 +31,19 @@ class ZeroShotClient:
             pairs.append(pair)
         return pairs
 
-    def classify(self, text: str, labels: List[str], hypothesis_template: str = "This example is {}.") -> Optional[Dict[str, float]]:
+    def classify(self, text: str, labels: list[str],
+                hypothesis_template: str = "This example is {}.") -> dict[str, float] | None:
         """
-        Performs zero-shot classification by routing to the Infinity classification endpoint via InfinityClient.
+        Performs zero-shot classification by routing to
+        the Infinity classification endpoint via InfinityClient.
         
         Args:
             text (str): The input text to classify.
-            labels (List[str]): Candidate labels (e.g., agent names).
+            labels (list[str]): Candidate labels (e.g., agent names).
             hypothesis_template (str): Template to form the hypothesis.
 
         Returns:
-            Dict[str, float]: A dictionary mapping labels to their entailment scores.
+            dict[str, float]: A dictionary mapping labels to their entailment scores.
                               e.g., {"finance": 0.92, "health": 0.15}
             None: If the request fails.
         """
@@ -43,15 +51,12 @@ class ZeroShotClient:
             return None
 
         inputs = self._construct_pairs(text, labels, hypothesis_template)
-        
         # Use InfinityClient to classify
         response_json = self.client.classify(inputs)
-        
         if not response_json:
             return None
 
         results = response_json.get("results") if isinstance(response_json, dict) else response_json
-        
         if not isinstance(results, list):
             return None
 
@@ -60,14 +65,12 @@ class ZeroShotClient:
         for i, item in enumerate(results):
             if i >= len(labels):
                 break
-            
             entailment_score = 0.0
             if isinstance(item, list):
                 for class_res in item:
                     if isinstance(class_res, dict) and class_res.get("label") == "entailment":
                         entailment_score = class_res.get("score", 0.0)
                         break
-            
             scores[labels[i]] = entailment_score
 
         return scores
