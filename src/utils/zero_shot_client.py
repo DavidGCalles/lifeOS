@@ -4,6 +4,10 @@ It abstracts away the details of how the NLI model expects input and how to inte
 results, providing a simple interface for zero-shot classification tasks.'''
 
 from src.utils.infinity_client import InfinityClient
+import logging
+import time
+
+logger = logging.getLogger(__name__)
 
 class ZeroShotClient:
     '''Client for performing zero-shot classification using an NLI model via InfinityClient.'''
@@ -32,7 +36,7 @@ class ZeroShotClient:
         return pairs
 
     def classify(self, text: str, labels: list[str],
-                hypothesis_template: str = "This example is {}.") -> dict[str, float] | None:
+                hypothesis_template: str = "This belongs to category {}.") -> dict[str, float] | None:
         """
         Performs zero-shot classification by routing to
         the Infinity classification endpoint via InfinityClient.
@@ -48,15 +52,26 @@ class ZeroShotClient:
             None: If the request fails.
         """
         if not labels:
+            logger.warning("ZeroShotClient: No labels provided for classification.")
             return None
+
+        start_time = time.time()
+        logger.info(f"ZeroShotClient: Classifying text against {len(labels)} labels...")
 
         inputs = self._construct_pairs(text, labels, hypothesis_template)
         # Use InfinityClient to classify
         response_json = self.client.classify(inputs)
+        
+        elapsed = time.time() - start_time
+        
         if not response_json:
+            logger.error(f"ZeroShotClient: Classification failed (no response) in {elapsed:.2f}s")
             return None
 
+        logger.info(f"ZeroShotClient: Classification completed in {elapsed:.2f}s")
+
         results = response_json.get("results") if isinstance(response_json, dict) else response_json
+        logger.info(f"ZeroShotClient: Raw classification results: {results}")
         if not isinstance(results, list):
             return None
 
