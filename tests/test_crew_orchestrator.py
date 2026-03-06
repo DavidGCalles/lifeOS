@@ -16,9 +16,10 @@ class DummyAgent:
         self.received = {}
         self.is_fast_agent = True
 
-    async def execute(self, user_message=None, context=None):
+    async def execute(self, user_message=None, context=None, user_context=None):
         self.received['user_message'] = user_message
         self.received['context'] = context
+        self.received['user_context'] = user_context
         return "DUMMY"
 
 

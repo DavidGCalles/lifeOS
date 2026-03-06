@@ -28,7 +28,6 @@ class SetCalendarIDTool(BaseTool):
 
     async def _run(self, email: str) -> str:
         try:
-            logger.warning("INSIDE TRY")
             logger.info("📧 SetCalendarIDTool invoked with email: %s", email)
             if not self._current_user:
                 logger.error("No user context set for SetCalendarIDTool.")
@@ -55,11 +54,9 @@ class SetCalendarIDTool(BaseTool):
                 
                 logger.info(f"🔄 Context Hot-Reload: {previous_email} -> {normalized_email}")
                 # -----------------------------------------------------------
-                logger.warning("INSIDE SUCCESS")
                 return (f"✅ Success: Linked email '{normalized_email}'. "
                         "I have updated my internal records instantly. You can now access the calendar.")
             else:
-                logger.warning("INSIDE DB FAILURE")
                 return "❌ Error: Database update failed."
         except Exception as e:
             logger.error("Unexpected error in SetCalendarIDTool: %s", str(e))

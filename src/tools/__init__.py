@@ -16,7 +16,6 @@ MEMORY_KIT = {
 }
 
 CALENDAR_KIT = {
-    "set_calendar_id": SetCalendarIDTool(),
     "calendar_list": CalendarListTool(),
     "calendar_add": CalendarAddTool(),
     "calendar_remove": CalendarDeleteTool(),
@@ -31,6 +30,7 @@ DRIVE_KIT = {
 
 # Mapeo oficial: Nombre en YAML -> Instancia de la herramienta
 TOOL_MAPPING = {
+    'set_calendar_id': SetCalendarIDTool(),
     'time': TimeCheckTool(),
     'math': CalculatorTool(),
     'search': WebSearchTool(),

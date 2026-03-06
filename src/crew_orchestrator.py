@@ -302,7 +302,11 @@ class CrewOrchestrator:
             if getattr(agent, "is_fast_agent", False):
                 logger.debug("⚡ Fast Agent execution path")
                 exec_start = time.time()
-                result = await agent.execute(user_message=user_message, context=full_context)
+                result = await agent.execute(
+                    user_message=user_message,
+                    context=full_context,
+                    user_context=user
+                )
                 exec_elapsed = time.time() - exec_start
                 logger.info("✅ Fast agent execution complete: %.2fs", exec_elapsed)
                 return result
