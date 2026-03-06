@@ -1,4 +1,9 @@
-# src/crew_orchestrator.py
+''' Crew Orchestrator for managing and routing tasks within the LifeOS system.
+This module defines the CrewOrchestrator class, which is responsible for routing user
+requests to the appropriate agents based on the content of the message. It implements
+a two-stage routing mechanism: first attempting a zero-shot classification using an NLI
+model via the ZeroShotClient, and if that fails, falling back to a more traditional
+LLM-based router agent.'''
 
 import asyncio
 import json
@@ -9,7 +14,7 @@ from typing import Any
 from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
-from src.identity_manager import UserContext 
+from src.identity_manager import UserContext
 from src.memory_gateway import MemoryGateway
 from src.schemas.memory import MemoryCategory, MemoryType
 from src.utils.zero_shot_client import ZeroShotClient
@@ -17,6 +22,7 @@ from src.utils.zero_shot_client import ZeroShotClient
 logger = logging.getLogger(__name__)
 
 class CrewOrchestrator:
+    '''Orchestrator for routing user requests to the appropriate agents in LifeOS.'''
     def __init__(self, memory_gateway: MemoryGateway):
         self.agents = LifeOSAgents()
         self.tasks = LifeOSTasks()
@@ -24,7 +30,8 @@ class CrewOrchestrator:
         self.zero_shot_client = ZeroShotClient()
 
     def _format_identity_context(self, user: UserContext | None) -> str:
-        if not user: return ""
+        if not user:
+            return ""
         return (
             f"👤 USER IDENTITY:\n"
             f"Name: {user.name}\n"
@@ -62,74 +69,104 @@ class CrewOrchestrator:
         """
         try:
             start_time = time.time()
-            public_labels = self.agents.get_public_agent_names()
             hipotheses = self.agents.get_zero_shot_hypothesis()
 
             # Create reverse mapping: hypothesis text -> agent key
             hypothesis_to_agent = {v: k for k, v in hipotheses.items()}
 
             # Run classification in a thread to avoid blocking the event loop
-            # We use hypothesis_template="{}" so the model sees the raw hypothesis text
             scores = await asyncio.to_thread(
-                self.zero_shot_client.classify, 
-                user_message, 
-                list(hipotheses.values()), 
-                hypothesis_template="{}"
+                self.zero_shot_client.classify,
+                user_message,
+                list(hipotheses.values())
             )
-            
             if not scores:
                 logger.warning("⚠️ Zero-Shot returned no scores.")
                 return None
 
+            # Filter scores to only valid agents and capture max raw score
+            valid_scores = {}
+            for hypothesis, score in scores.items():
+                agent_key = hypothesis_to_agent.get(hypothesis)
+                if agent_key and agent_key in self.agents.config:
+                    valid_scores[hypothesis] = score
+            scores = valid_scores
+            if not scores:
+                logger.info("ℹ️ Zero-Shot: No valid agent matches found after filtering.")
+                return None
+
+            max_raw_score = max(scores.values())
+
+            # Apply L1 Normalization to probabilities
+            try:
+                total_score = sum(scores.values())
+                if total_score > 0:
+                    for k in scores:
+                        scores[k] /= total_score
+                normalized_sum = sum(scores.values())
+                logger.info(
+                    "L1 Normalization applied. Raw score sum: %.4f. "
+                    "Normalized sum: %.4f. Max raw: %.4f",
+                    total_score, normalized_sum, max_raw_score
+                )
+            except Exception as e:
+                logger.error("Error applying L1 normalization: %s", e)
+
             # Sort scores descending
             sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-            logger.info(f"Zero-Shot raw scores: {sorted_scores}")
+            logger.info("Zero-Shot normalized scores: %s", sorted_scores)
+
             # Relate back to agent keys using the reverse mapping
             mapped_scores = []
             for hypothesis, score in sorted_scores:
                 agent_key = hypothesis_to_agent.get(hypothesis)
-                if agent_key and agent_key in self.agents.config:
-                    mapped_scores.append((agent_key, score))
+                # already filtered, but keeping structure
+                mapped_scores.append((agent_key, score))
             sorted_scores = mapped_scores
+            max_norm_score = sorted_scores[0][1] if sorted_scores else 0.0
 
             # Log all probabilities
             logger.info("📊 Zero-Shot Probabilities: %s", json.dumps(sorted_scores))
-            
             if not sorted_scores:
                 logger.info("ℹ️ Zero-Shot: No valid agent matches found.")
                 return None
-            
             top_agent, top_score = sorted_scores[0]
-            
             # Margin check (Threshold between top 1 and top 2)
+            # With L1 normalization, we look for relative dominance.
             margin_pass = True
             if len(sorted_scores) > 1:
                 second_score = sorted_scores[1][1]
-                # Using 0.05 as margin threshold (5% difference)
-                if (top_score - second_score) < 0.05:
+                # Using 0.1 as margin threshold (10% of probability mass)
+                if (top_score - second_score) < 0.1:
                     margin_pass = False
-                    logger.info("⚠️ Zero-Shot Margin too low: %.2f vs %.2f", top_score, second_score)
-            
-            # Confidence check (> 0.5)
-            if top_score > 0.5 and margin_pass:
+                    logger.info("⚠️ Zero-Shot Margin too low: %.2f vs %.2f",
+                                top_score, second_score)
+            # Confidence check ( normalized score > 0.5 AND Margin passed)
+            if max_norm_score > 0.39 and margin_pass:
                 elapsed = time.time() - start_time
-                logger.info("⚡ Zero-Shot Selected: %s (score=%.2f) in %.2fs", top_agent.upper(), top_score, elapsed)
-                return "JANE" if top_agent.upper() == "GENERAL" else top_agent.upper()
-            
-            logger.info("ℹ️ Zero-Shot Confidence Low: %.2f (or margin fail). Fallback to Router.", top_score)
+                logger.info(
+                    "⚡ Zero-Shot Selected: %s (norm=%.2f, raw=%.2f) in %.2fs",
+                    top_agent.upper(), max_norm_score, max_raw_score, elapsed)
+                return top_agent.upper()
+            logger.info(
+                "ℹ️ Zero-Shot Confidence Low: norm=%.2f, raw=%.2f (or margin fail)."
+                " Fallback to Router.", top_score, max_raw_score)
             return None
 
         except Exception as e:
             logger.error("❌ Zero-Shot Classification Error: %s", e)
             return None
 
-    async def route_request(self, user_message: str | list[dict[str, Any]], user: UserContext | None = None) -> str:
+    async def route_request(self, user_message: str | list[dict[str, Any]],
+                            user: UserContext | None = None) -> str:
         """
         Enruta la petición haciendo Hot-Swap de modelo si es necesario.
         """
         start_time = time.time()
-        logger.info("🚦 Routing initiated: user=%s message_type=%s", user.telegram_id if user else "unknown", type(user_message).__name__)
-        
+        logger.info(
+            "🚦 Routing initiated: user=%s message_type=%s",
+            user.telegram_id if user else "unknown",
+            type(user_message).__name__)
         # --- STAGE 1: Zero-Shot Routing (Text Only) ---
         if isinstance(user_message, str):
             result = await self._zero_shot_routing(user_message)
@@ -140,12 +177,10 @@ class CrewOrchestrator:
 
         # --- STAGE 2: Classic Router Fallback ---
         dispatcher = self.agents.create_agent('dispatcher')
-        
         # 1. DETECCIÓN MULTIMODAL
         if isinstance(user_message, list):
             logger.info("👁️ Visual Input detected: Dispatcher transforming to 'vision-model'")
             dispatcher.model_name = "vision-model"
-        
         options_text = self.agents.get_agents_summary()
         identity_header = self._format_identity_context(user)
         routing_context = f"{identity_header}\nAvailable Agents:\n{options_text}"
@@ -155,13 +190,14 @@ class CrewOrchestrator:
             try:
                 exec_start = time.time()
                 raw_response = await dispatcher.execute(
-                    user_message=user_message, 
+                    user_message=user_message,
                     context=routing_context,
                     user_context=user # Pasamos el UserContext al FastTrackAgent
                 )
                 exec_elapsed = time.time() - exec_start
-                logger.info("📤 Dispatcher responded in %.2fs (len=%d)", exec_elapsed, len(str(raw_response)))
-                
+                logger.info(
+                    "📤 Dispatcher responded in %.2fs (len=%d)",
+                    exec_elapsed, len(str(raw_response)))
                 # 2. PARSING JSON ESTRICTO
                 decision_data = self._clean_and_extract_json(raw_response)
                 if decision_data and "target_agent" in decision_data:
@@ -169,45 +205,48 @@ class CrewOrchestrator:
                     # Validate the decided agent exists in configuration
                     if candidate.lower() in self.agents.config:
                         total_elapsed = time.time() - start_time
-                        logger.info("✅ Router Decision: %s (total_time=%.2fs)", candidate, total_elapsed)
+                        logger.info(
+                            "✅ Router Decision: %s (total_time=%.2fs)",
+                            candidate, total_elapsed)
                         return candidate
                     else:
-                        logger.warning("⚠️ Router Decision '%s' not recognized. Raw response: %s. Defaulting to JANE.", candidate, raw_response[:200])
+                        logger.warning(
+                            "⚠️ Router Decision '%s' not recognized."
+                            " Raw response: %s. Defaulting to JANE.",
+                            candidate, raw_response[:200])
                         return "JANE"
-                
                 # 3. FALLBACK SEGURO (Default -> JANE)
                 # Si el modelo no devuelve un JSON claro, NO adivinamos por palabras clave.
-                # Preferimos fallar hacia el asistente general (Jane) que enviar "reformar cocina" al cocinero.
-                logger.warning("⚠️ Router Fallback: No valid JSON detected. Defaulting to JANE.")
+                logger.warning("⚠️ Router Fallback: No valid JSON detected."
+                               " Defaulting to JANE.")
                 return "JANE"
             except Exception as e:
                 elapsed = time.time() - start_time
-                logger.error("❌ Router Error after %.2fs: %s. Defaulting to JANE.", elapsed, str(e), exc_info=True)
+                logger.error(
+                    "❌ Router Error after %.2fs: %s. Defaulting to JANE.",
+                    elapsed, str(e), exc_info=True)
                 return "JANE"
         else:
             # Fallback para modo lento (Legacy)
             if isinstance(user_message, list):
-                return "JANE" 
-
+                return "JANE"
             full_msg = f"{routing_context}\nIncoming: {user_message}"
             task = self.tasks.router_task(dispatcher, full_msg, options_text)
             crew = Crew(agents=[dispatcher], tasks=[task], verbose=True)
             decision = await asyncio.to_thread(crew.kickoff)
             return str(decision).strip().upper()
-        
     async def run_consolidation_task(self, conversation_history: str, user) -> str:
+        '''Ejecuta la tarea de consolidación de memoria usando un agente especializado.'''
         start_time = time.time()
         logger.info("🧠 Memory Consolidation iniciada para %s", user.telegram_id)
 
         agent = self.agents.create_agent('memory_consolidator')
-        
         # Extraemos los valores literales de tus Enums
         valid_categories = [e.value for e in MemoryCategory]
         valid_types = [e.value for e in MemoryType]
 
         # Montamos el prompt con inyecciones seguras
         task_template = self.tasks.config['memory_consolidation']['description']
-        
         prompt = task_template.replace('{conversation_history}', conversation_history)
         prompt = prompt.replace('{categories}', str(valid_categories))
         prompt = prompt.replace('{types}', str(valid_types))
@@ -222,15 +261,18 @@ class CrewOrchestrator:
         logger.info("✅ Extracción completada en %.2fs.", elapsed)
         return summary_json_str
 
-    async def execute_request(self, 
-                              user_message: str | list[dict[str, Any]], 
-                              target_agent_key: str, 
-                              chat_id: int | None = None, 
-                              user: UserContext | None = None, 
+    async def execute_request(self,
+                              user_message: str | list[dict[str, Any]],
+                              target_agent_key: str,
+                              chat_id: int | None = None,
+                              user: UserContext | None = None,
                               extra_context: str | None = None) -> Any:
+        '''Ejecuta la petición en el agente objetivo con contexto enriquecido.'''
         start_time = time.time()
         yaml_key = target_agent_key.lower()
-        logger.info("🚀 Agent execution starting: agent=%s user=%s chat_id=%s", yaml_key, user.telegram_id if user else "unknown", chat_id)
+        logger.info(
+            "🚀 Agent execution starting: agent=%s user=%s chat_id=%s",
+            yaml_key, user.telegram_id if user else "unknown", chat_id)
 
         agent = self.agents.create_agent(yaml_key) or self.agents.create_agent('jane')
         if agent is None:
@@ -243,7 +285,6 @@ class CrewOrchestrator:
             logger.debug("📌 Extra context injected (len=%d)", len(extra_context))
         if user:
             context_parts.append(self._format_identity_context(user))
-        
         if chat_id and user:
             logger.debug("📚 Fetching working memory for chat_id=%s", chat_id)
             # retrieve only messages visible to this user via gateway
@@ -268,12 +309,15 @@ class CrewOrchestrator:
             else:
                 logger.debug("🔧 Crew Agent execution path (slow)")
                 if isinstance(user_message, list):
-                    text_content = next((x['text'] for x in user_message if x['type'] == 'text'), "Image Content")
+                    text_content = next(
+                        (x['text'] for x in user_message if x['type'] == 'text'),
+                        "Image Content")
                     user_message_str = f"[User sent an image]: {text_content}"
-                    logger.debug("📸 Multimodal message detected, extracted text: %s", text_content[:50])
+                    logger.debug(
+                        "📸 Multimodal message detected, extracted text: %s",
+                        text_content[:50])
                 else:
                     user_message_str = user_message
-            
             full_message = f"{full_context}\n👇 REQUEST:\n{user_message_str}"
             task1 = self.tasks.analysis_task(agent, full_message)
             task2 = self.tasks.response_task(agent)
@@ -281,5 +325,7 @@ class CrewOrchestrator:
             return await asyncio.to_thread(crew.kickoff)
         except Exception as e:
             elapsed = time.time() - start_time
-            logger.error("❌ Error during agent execution after %.2fs: %s", elapsed, str(e), exc_info=True)
+            logger.error(
+                "❌ Error during agent execution after %.2fs: %s",
+                elapsed, str(e), exc_info=True)
             return f"Error executing agent: {str(e)}"

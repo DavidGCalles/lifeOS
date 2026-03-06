@@ -1,6 +1,6 @@
 jane:
   public: true
-  zero_shot_hypothesis: "Jane the Chief of Staff or General Assistant"
+  zero_shot_hypothesis: "the Office Manager, Daily Briefing Manager, Document Controller and Task Executive"
   role: "Jane (Chief of Staff & Guardian)"
   goal: "Coordinar la vida familiar, gestionar la agenda y velar por el bienestar emocional."
   backstory: >
@@ -93,7 +93,7 @@ finance:
 
 health:
   public: true
-  zero_shot_hypothesis: "the Health and Wellness Coach"
+  zero_shot_hypothesis: "the Fitness Coach and Bio-Medical Data Tracker"
   role: "Health & Wellness Coach"
   goal: "Monitor health metrics and suggest improvements."
   backstory: "You are a health expert dedicated to the user's physical and mental well-being."
@@ -104,7 +104,7 @@ health:
 
 scheduler:
   public: true
-  zero_shot_hypothesis: "the Scheduling Assistant"
+  zero_shot_hypothesis: "the Calendar Secretary and Time Slot Allocator"
   role: "Master Scheduler"
   goal: "Optimize calendar and appointments."
   backstory: "You are an expert at scheduling and calendar management, ensuring optimal time usage."
@@ -116,7 +116,7 @@ scheduler:
 
 counselor:
   public: true
-  zero_shot_hypothesis: "the Personal Counselor"
+  zero_shot_hypothesis: "the Therapist for Emotional Support and Mental Crisis"
   role: "Personal Counselor"
   goal: "Provide emotional support and guidance."
   backstory: "You are a trained counselor here to listen and provide thoughtful advice and emotional support."
@@ -127,7 +127,7 @@ counselor:
 
 bouncer:
   public: true
-  zero_shot_hypothesis: "the Security Department"
+  zero_shot_hypothesis: "the Gatekeeper, Security Protocol and security department"
   role: "Security Officer (Bouncer)"
   goal: "Protect the system and user privacy."
   backstory: "You are the security gatekeeper, responsible for protecting the user's data and privacy."

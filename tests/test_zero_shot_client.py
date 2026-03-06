@@ -14,8 +14,8 @@ class TestZeroShotClient(unittest.TestCase):
         text = "Hello world"
         labels = ["greeting", "farewell"]
         expected = [
-            "'Hello world [SEP] This example is greeting.'",
-            "'Hello world [SEP] This example is farewell.'"
+            "Hello world [SEP] This example is greeting.",
+            "Hello world [SEP] This example is farewell."
         ]
         pairs = self.client._construct_pairs(text, labels)
         self.assertEqual(pairs, expected)
@@ -24,7 +24,7 @@ class TestZeroShotClient(unittest.TestCase):
         text = "Hello"
         labels = ["A"]
         template = "Category: {}"
-        expected = ["'Hello [SEP] Category: A'"]
+        expected = ["Hello [SEP] Category: A"]
         pairs = self.client._construct_pairs(text, labels, hypothesis_template=template)
         self.assertEqual(pairs, expected)
 
@@ -61,10 +61,10 @@ class TestZeroShotClient(unittest.TestCase):
 
         # Verify InfinityClient.classify was called with correct inputs
         expected_inputs = [
-            "'Invest in stocks [SEP] This belongs to category finance.'",
-            "'Invest in stocks [SEP] This belongs to category health.'"
+            "Invest in stocks [SEP] I am talking to finance.",
+            "Invest in stocks [SEP] I am talking to health."
         ]
-        self.mock_infinity_client.classify.assert_called_once_with(expected_inputs)
+        self.mock_infinity_client.classify.assert_called_once_with(expected_inputs, raw_scores=False)
 
     def test_classify_empty_labels(self):
         result = self.client.classify("text", [])

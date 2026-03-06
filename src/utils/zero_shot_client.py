@@ -30,12 +30,13 @@ class ZeroShotClient:
         for label in labels:
             hypothesis = hypothesis_template.format(label)
             # Injecting [SEP] token as requested for the NLI model input format
-            pair = f"'{text} [SEP] {hypothesis}'"
+            pair = f"{text} [SEP] {hypothesis}"
             pairs.append(pair)
         return pairs
 
     def classify(self, text: str, labels: list[str],
-                hypothesis_template: str = "I am talking to {}.") -> dict[str, float] | None:
+                hypothesis_template: str = "I am talking to {}.",
+                raw_scores: bool = False) -> dict[str, float] | None:
         """
         Performs zero-shot classification by routing to
         the Infinity classification endpoint via InfinityClient.
@@ -44,6 +45,7 @@ class ZeroShotClient:
             text (str): The input text to classify.
             labels (list[str]): Candidate labels (e.g., agent names).
             hypothesis_template (str): Template to form the hypothesis.
+            raw_scores (bool): Whether to return raw logits instead of probabilities.
 
         Returns:
             dict[str, float]: A dictionary mapping labels to their entailment scores.
@@ -59,7 +61,7 @@ class ZeroShotClient:
 
         inputs = self._construct_pairs(text, labels, hypothesis_template)
         # Use InfinityClient to classify
-        response_json = self.client.classify(inputs)
+        response_json = self.client.classify(inputs, raw_scores=raw_scores)
         elapsed = time.time() - start_time
         if not response_json:
             logger.debug("ZeroShotClient: Classification failed (no response) in %.2f}s", elapsed)
