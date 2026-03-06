@@ -141,6 +141,7 @@ bouncer:
   tools:
     - set_calendar_id
     - user_governance
+    - get_pending_users
   allow_delegation: true
   verbose: true
   execution_mode: "fast"

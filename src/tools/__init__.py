@@ -8,6 +8,7 @@ from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool
 from .google_drive_tool import DriveSearchTool, DriveReadTool
 from .governance_tool import UserGovernanceTool
 from .attendee_search_tool import AttendeeSearchTool
+from .pending_users_tool import GetPendingUsersTool
 # --- KITS DE HERRAMIENTAS ---
 MEMORY_KIT = {
     "save_memory": RememberTool(),
@@ -42,5 +43,6 @@ TOOL_MAPPING = {
     **CALENDAR_KIT,
     **DRIVE_KIT,
     'user_governance': UserGovernanceTool(),
-    'attendee_search': AttendeeSearchTool()
+    'attendee_search': AttendeeSearchTool(),
+    'get_pending_users': GetPendingUsersTool()
 }
