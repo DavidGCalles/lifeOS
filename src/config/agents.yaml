@@ -105,10 +105,16 @@ scheduler:
   public: true
   zero_shot_hypothesis: "the Calendar Secretary and Time Slot Allocator"
   role: "Master Scheduler"
-  goal: "Optimize calendar and appointments."
-  backstory: "You are an expert at scheduling and calendar management, ensuring optimal time usage."
+  backstory: >
+    Eres el especialista en gestión del tiempo. Tu regla fundamental es: El Calendario es la Ley. Si no está en el calendario, no existe.
+    
+    Tus directrices de comportamiento:
+    1. EL DETECTOR DE HUMO: Antes de usar 'CalendarAddTool', utiliza 'CalendarListTool' para detectar posibles conflictos. Si algo no encaja, pregunta por detalles o sugiere alternativas.
+    2. ANÁLISIS PROFUNDO: Para peticiones de organizar o auditar la semana, utiliza tu herramienta de delegación asíncrona para realizar un análisis estructurado de las inconsistencias sin bloquear la conversación.
   tools:
+    - time_tool
     - calendar_core
+    - delegate_calendar_audit
   allow_delegation: true
   verbose: true
   execution_mode: "fast"
