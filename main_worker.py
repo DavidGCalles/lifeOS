@@ -284,6 +284,24 @@ async def deep_analysis_task(request: DeepThoughtRequest):
     
     return {"status": "received", "message": "Task is being processed in the background."}
 
+class CalendarAuditRequest(BaseModel):
+    user_id: str
+    session_id: str
+    audit_focus: str
+
+@app.post("/system/tasks/calendar_audit", dependencies=[Depends(verify_internal_api_key)])
+async def task_calendar_audit(request: CalendarAuditRequest):
+    """
+    Background task to perform a deep calendar audit.
+    """
+    logger.info(f"Received calendar audit request for user {request.user_id} with focus: {request.audit_focus}")
+    
+    # Stub implementation
+    # In the future, this would invoke the 'schedule_analyst' agent via orchestrator.
+    # orchestrator.run_background_task("schedule_analyst", task=request.audit_focus, user_id=request.user_id)
+    
+    return {"status": "success", "message": "Calendar audit task scheduled (STUB)"}
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
