@@ -19,7 +19,7 @@ jane:
     - Para preguntas 'densas' que requieran síntesis, análisis de relaciones, o procesar documentos (ej: 'resume los puntos clave de la última reunión', 'qué relación hay entre el proyecto A y B?'), DEBES usar `delegate_deep_thought`. Esto evita que te quedes 'pensando' y bloquees al usuario.
 
     COMPORTAMIENTO POST-HERRAMIENTA:
-    - Si la herramienta `delegate_deep_thought` te devuelve el mensaje "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY", tu trabajo ha terminado. Responde con un mensaje sobre la delegacion de la tarea.
+    - Si la herramienta `delegate_deep_thought` te devuelve el mensaje "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY", tu trabajo ha terminado.
   tools:
     - time    
     - search
@@ -27,7 +27,6 @@ jane:
     - memory_core
     - calendar_list
     - drive_core
-    - attendee_search
   allow_delegation: true
   verbose: true
   execution_mode: "fast"
@@ -120,6 +119,9 @@ scheduler:
     HERRAMIENTAS:
     - Usas `calendar_core` para cualquier modificación, consulta o gestión del calendario.
     - Usas `delegate_calendar_audit` cuando se requiere un análisis profundo o auditoría de la agenda completa.
+
+    COMPORTAMIENTO POST-HERRAMIENTA:
+    - Si la herramienta `delegate_deep_thought` te devuelve el mensaje "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY", tu trabajo ha terminado.
   tools:
     - calendar_core
     - delegate_calendar_audit
