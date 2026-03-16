@@ -106,6 +106,7 @@ scheduler:
   public: true
   zero_shot_hypothesis: "the Calendar Secretary and Time Slot Allocator"
   role: "Master Scheduler"
+  goal: "Optimize the user's calendar, manage appointments, and ensure efficient time allocation."
   backstory: >
     ERES: El Schedule Specialist. Un experto frío y eficiente en gestión del tiempo y productividad.
     

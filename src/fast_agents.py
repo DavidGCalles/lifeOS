@@ -135,7 +135,7 @@ class FastTrackAgent:
                                     logger.debug("🔄 Running sync tool in thread pool: %s", tool_name)
                                     result_content = await asyncio.to_thread(tool_instance.run, **args)
                                 
-                                logger.debug("✅ Tool completed: %s (result_len=%d)", tool_name, len(str(result_content)))
+                                logger.info("✅ Tool completed: %s (result_len=%d)", tool_name, len(str(result_content)))
                                 
                                 # Paracaídas por si devuelve corrutina sin esperar
                                 if inspect.iscoroutine(result_content):
