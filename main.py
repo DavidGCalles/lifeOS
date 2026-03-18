@@ -229,6 +229,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
         respuesta_str = str(respuesta)
         
+        # KILL SWITCH: Si el agente o herramienta solicita silencio, cortamos la ejecución aquí
+        if respuesta_str.strip() == "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY":
+            logging.info("🛑 Kill switch detected in main loop. Silently terminating interaction.")
+            return
+
         sent_msg = await send_smart_response(update, f"🤖 *[{target_agent}]*\n\n{respuesta_str}")
 
         if sent_msg:

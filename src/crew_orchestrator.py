@@ -236,6 +236,12 @@ class CrewOrchestrator:
                 )
                 exec_elapsed = time.time() - exec_start
                 logger.info("✅ Fast agent execution complete: %.2fs", exec_elapsed)
+                
+                # Kill switch detection
+                if str(result).strip() == "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY":
+                    logger.info("🛑 Orchestrator detected kill switch token. Returning exactly.")
+                    return "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY"
+                    
                 return result
             else:
                 logger.debug("🔧 Crew Agent execution path (slow)")
@@ -253,7 +259,14 @@ class CrewOrchestrator:
             task1 = self.tasks.analysis_task(agent, full_message)
             task2 = self.tasks.response_task(agent)
             crew = Crew(agents=[agent], tasks=[task1, task2], verbose=True)
-            return await asyncio.to_thread(crew.kickoff)
+            result = await asyncio.to_thread(crew.kickoff)
+            
+            # Kill switch detection for Legacy Path
+            if str(result).strip() == "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY":
+                logger.info("🛑 Orchestrator detected kill switch token in Legacy Path. Returning exactly.")
+                return "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY"
+                
+            return result
         except Exception as e:
             elapsed = time.time() - start_time
             logger.error(

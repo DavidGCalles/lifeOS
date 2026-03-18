@@ -140,6 +140,10 @@ class FastTrackAgent:
                                 # Paracaídas por si devuelve corrutina sin esperar
                                 if inspect.iscoroutine(result_content):
                                     result_content = await result_content
+                                
+                                if result_content == "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY":
+                                    logger.info("🛑 Kill switch activated: Tool %s triggered handoff. Terminating execution loop.", tool_name)
+                                    return "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY"
 
                             except Exception as e:
                                 error_msg = f"Error executing {tool_name}: {str(e)}"
