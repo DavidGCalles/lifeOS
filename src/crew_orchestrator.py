@@ -68,90 +68,17 @@ class CrewOrchestrator:
         Retorna el nombre del agente si la confianza es alta, o None.
         """
         try:
-            start_time = time.time()
             hipotheses = self.agents.get_zero_shot_hypothesis()
+            valid_agents = list(self.agents.config.keys())
 
-            # Create reverse mapping: hypothesis text -> agent key
-            hypothesis_to_agent = {v: k for k, v in hipotheses.items()}
-
-            # Run classification in a thread to avoid blocking the event loop
-            scores = await asyncio.to_thread(
-                self.zero_shot_client.classify,
+            # Run evaluation in a thread to avoid blocking the event loop
+            top_agent = await asyncio.to_thread(
+                self.zero_shot_client.evaluate_routing,
                 user_message,
-                list(hipotheses.values())
+                hipotheses,
+                valid_agents
             )
-            if not scores:
-                logger.warning("⚠️ Zero-Shot returned no scores.")
-                return None
-
-            # Filter scores to only valid agents and capture max raw score
-            valid_scores = {}
-            for hypothesis, score in scores.items():
-                agent_key = hypothesis_to_agent.get(hypothesis)
-                if agent_key and agent_key in self.agents.config:
-                    valid_scores[hypothesis] = score
-            scores = valid_scores
-            if not scores:
-                logger.info("ℹ️ Zero-Shot: No valid agent matches found after filtering.")
-                return None
-
-            max_raw_score = max(scores.values())
-
-            # Apply L1 Normalization to probabilities
-            try:
-                total_score = sum(scores.values())
-                if total_score > 0:
-                    for k in scores:
-                        scores[k] /= total_score
-                normalized_sum = sum(scores.values())
-                logger.info(
-                    "L1 Normalization applied. Raw score sum: %.4f. "
-                    "Normalized sum: %.4f. Max raw: %.4f",
-                    total_score, normalized_sum, max_raw_score
-                )
-            except Exception as e:
-                logger.error("Error applying L1 normalization: %s", e)
-
-            # Sort scores descending
-            sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-            logger.info("Zero-Shot normalized scores: %s", sorted_scores)
-
-            # Relate back to agent keys using the reverse mapping
-            mapped_scores = []
-            for hypothesis, score in sorted_scores:
-                agent_key = hypothesis_to_agent.get(hypothesis)
-                # already filtered, but keeping structure
-                mapped_scores.append((agent_key, score))
-            sorted_scores = mapped_scores
-            max_norm_score = sorted_scores[0][1] if sorted_scores else 0.0
-
-            # Log all probabilities
-            logger.info("📊 Zero-Shot Probabilities: %s", json.dumps(sorted_scores))
-            if not sorted_scores:
-                logger.info("ℹ️ Zero-Shot: No valid agent matches found.")
-                return None
-            top_agent, top_score = sorted_scores[0]
-            # Margin check (Threshold between top 1 and top 2)
-            # With L1 normalization, we look for relative dominance.
-            margin_pass = True
-            if len(sorted_scores) > 1:
-                second_score = sorted_scores[1][1]
-                # Using 0.1 as margin threshold (10% of probability mass)
-                if (top_score - second_score) < 0.1:
-                    margin_pass = False
-                    logger.info("⚠️ Zero-Shot Margin too low: %.2f vs %.2f",
-                                top_score, second_score)
-            # Confidence check ( normalized score > 0.5 AND Margin passed)
-            if max_norm_score > 0.39 and margin_pass:
-                elapsed = time.time() - start_time
-                logger.info(
-                    "⚡ Zero-Shot Selected: %s (norm=%.2f, raw=%.2f) in %.2fs",
-                    top_agent.upper(), max_norm_score, max_raw_score, elapsed)
-                return top_agent.upper()
-            logger.info(
-                "ℹ️ Zero-Shot Confidence Low: norm=%.2f, raw=%.2f (or margin fail)."
-                " Fallback to Router.", top_score, max_raw_score)
-            return None
+            return top_agent
 
         except Exception as e:
             logger.error("❌ Zero-Shot Classification Error: %s", e)

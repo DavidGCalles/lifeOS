@@ -42,7 +42,11 @@ class DelegateCalendarAuditTool(BaseTool):
 
         # 2. Prepare payload and headers for the worker
         # Stub endpoint for now
-        worker_url = os.getenv("WORKER_URL", "http://localhost:8001/system/tasks/calendar_audit")
+        worker_url = os.getenv("WORKER_HOST")
+        if not worker_url:
+           raise ValueError("WORKER_HOST environment variable is not set. Cannot dispatch audit task.")
+        else:
+            worker_url = f"{worker_url}/system/tasks/calendar_audit"
         api_key = os.getenv("INTERNAL_API_KEY")
         headers = {"Authorization": f"Bearer {api_key}"}
         

@@ -31,20 +31,20 @@ class TestZeroShotClient(unittest.TestCase):
     def test_classify_success(self):
         # Mock response from InfinityClient
         # Input: 2 labels. 
-        # Label 1 (finance): entailment 0.95
-        # Label 2 (health): entailment 0.10
+        # Label 1 (finance): entailment 0.95, contradiction 0.02 -> delta 0.93
+        # Label 2 (health): entailment 0.10, contradiction 0.80 -> delta -0.70
         
         self.mock_infinity_client.classify.return_value = {
             "data": [
                 [
                     {"label": "entailment", "score": 0.95},
-                    {"label": "neutral", "score": 0.05},
-                    {"label": "contradiction", "score": 0.0}
+                    {"label": "neutral", "score": 0.03},
+                    {"label": "contradiction", "score": 0.02}
                 ],
                 [
                     {"label": "entailment", "score": 0.10},
-                    {"label": "neutral", "score": 0.80},
-                    {"label": "contradiction", "score": 0.10}
+                    {"label": "neutral", "score": 0.10},
+                    {"label": "contradiction", "score": 0.80}
                 ]
             ]
         }
@@ -56,8 +56,8 @@ class TestZeroShotClient(unittest.TestCase):
         
         self.assertIsNotNone(result)
         self.assertIsInstance(result, dict)
-        self.assertEqual(result["finance"], 0.95)
-        self.assertEqual(result["health"], 0.10)
+        self.assertAlmostEqual(result["finance"], 0.93)
+        self.assertAlmostEqual(result["health"], -0.70)
 
         # Verify InfinityClient.classify was called with correct inputs
         expected_inputs = [
@@ -70,6 +70,32 @@ class TestZeroShotClient(unittest.TestCase):
         result = self.client.classify("text", [])
         self.assertIsNone(result)
         self.mock_infinity_client.classify.assert_not_called()
+
+    def test_classify_missing_keys(self):
+        self.mock_infinity_client.classify.return_value = {
+            "data": [
+                [
+                    {"label": "entailment", "score": 0.80}
+                ],
+                [
+                    {"label": "contradiction", "score": 0.60}
+                ],
+                [
+                    {"label": "neutral", "score": 1.0}
+                ]
+            ]
+        }
+
+        text = "Some text"
+        labels = ["A", "B", "C"]
+        
+        result = self.client.classify(text, labels)
+        
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, dict)
+        self.assertAlmostEqual(result["A"], 0.80)
+        self.assertAlmostEqual(result["B"], -0.60)
+        self.assertAlmostEqual(result["C"], 0.00)
 
     def test_classify_failure(self):
         self.mock_infinity_client.classify.return_value = None

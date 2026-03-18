@@ -35,7 +35,8 @@ if os.path.exists(modules_file_path):
 # -----------------------------------------------------------------------------
 # 2. NLI MODEL (Zero-Shot Classification)
 # -----------------------------------------------------------------------------
-nli_model_name = 'MoritzLaurer/mDeBERTa-v3-base-mnli-xnli'
+#nli_model_name = 'MoritzLaurer/mDeBERTa-v3-base-mnli-xnli'
+nli_model_name = "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli"
 nli_output_path = 'models/nli-model'
 
 print(f"🚀 Loading NLI model '{nli_model_name}' (Online)...")
