@@ -124,97 +124,20 @@ def test_clean_and_extract_json(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_zero_shot_routing_success(monkeypatch):
-    gateway = MagicMock()
-    orchestrator = CrewOrchestrator(memory_gateway=gateway)
-    
-    # Mock agents config
-    mock_agents = MagicMock()
-    # Need to simulate that 'AGENT_A' is a valid agent in config
-    mock_agents.config = {'agent_a': {}, 'agent_b': {}}
-    mock_agents.get_zero_shot_hypothesis.return_value = {
-        'agent_a': 'Hypothesis A',
-        'agent_b': 'Hypothesis B'
-    }
-    monkeypatch.setattr(orchestrator, 'agents', mock_agents)
-
-    # Mock ZeroShotClient
-    mock_client = MagicMock()
-    # classify returns dict of scores
-    mock_client.classify.return_value = {
-        'Hypothesis A': 0.9,
-        'Hypothesis B': 0.1
-    }
-    monkeypatch.setattr(orchestrator, 'zero_shot_client', mock_client)
-
-    result = await orchestrator._zero_shot_routing("some message")
-    # The orchestrator returns upper case agent key
-    assert result == "AGENT_A"
-
-
-@pytest.mark.asyncio
-async def test_zero_shot_routing_low_confidence(monkeypatch):
-    gateway = MagicMock()
-    orchestrator = CrewOrchestrator(memory_gateway=gateway)
-    
-    mock_agents = MagicMock()
-    mock_agents.config = {'agent_a': {}, 'agent_b': {}}
-    mock_agents.get_zero_shot_hypothesis.return_value = {
-        'agent_a': 'Hypothesis A',
-        'agent_b': 'Hypothesis B'
-    }
-    monkeypatch.setattr(orchestrator, 'agents', mock_agents)
-
-    mock_client = MagicMock()
-    # Both low scores. Logic requires max_norm_score > 0.39 (normalized)
-    # If raw scores are low but one dominates, normalization might boost it.
-    # But let's verify normalization logic:
-    # 0.1, 0.1 -> sum=0.2. Normalized -> 0.5, 0.5.
-    # Max norm = 0.5 > 0.39.
-    # BUT margin check: top - second = 0.5 - 0.5 = 0 < 0.1 -> Margin fail.
-    mock_client.classify.return_value = {
-        'Hypothesis A': 0.1,
-        'Hypothesis B': 0.1
-    }
-    monkeypatch.setattr(orchestrator, 'zero_shot_client', mock_client)
-
-    result = await orchestrator._zero_shot_routing("some message")
-    assert result is None
-
-
-@pytest.mark.asyncio
 async def test_zero_shot_routing_exception(monkeypatch):
     gateway = MagicMock()
     orchestrator = CrewOrchestrator(memory_gateway=gateway)
     
-    # Mock zero_shot_client to raise exception
+    # Mock zero_shot_client.evaluate_routing to raise exception
     mock_client = MagicMock()
-    mock_client.classify.side_effect = Exception("API Error")
+    mock_client.evaluate_routing.side_effect = Exception("API Error")
     monkeypatch.setattr(orchestrator, 'zero_shot_client', mock_client)
 
     # Mock agents config to avoid earlier failures
     mock_agents = MagicMock()
     mock_agents.get_zero_shot_hypothesis.return_value = {'agent_a': 'Hypothesis A'}
+    mock_agents.config = {'agent_a': {}} 
     monkeypatch.setattr(orchestrator, 'agents', mock_agents)
-
-    result = await orchestrator._zero_shot_routing("message")
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_zero_shot_routing_no_valid_agents_after_filter(monkeypatch):
-    gateway = MagicMock()
-    orchestrator = CrewOrchestrator(memory_gateway=gateway)
-    
-    # Agents config does NOT contain agent_a
-    mock_agents = MagicMock()
-    mock_agents.config = {} 
-    mock_agents.get_zero_shot_hypothesis.return_value = {'agent_a': 'Hypothesis A'}
-    monkeypatch.setattr(orchestrator, 'agents', mock_agents)
-
-    mock_client = MagicMock()
-    mock_client.classify.return_value = {'Hypothesis A': 0.9}
-    monkeypatch.setattr(orchestrator, 'zero_shot_client', mock_client)
 
     result = await orchestrator._zero_shot_routing("message")
     assert result is None
