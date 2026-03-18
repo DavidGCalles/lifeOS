@@ -124,6 +124,8 @@ graph TD
         direction TB
         ADR12_Interface("<b>ADR-012: Memory Abstraction Layer</b><br/>Scope: Unified I/O & RBAC<br/>Status: Completed"):::done
         
+        ADR15_Router("<b>ADR-015: Two-Stage Router</b><br/>Scope: Message Routing<br/>Status: Completed"):::done
+        
         ADR14_Workers("<b>ADR-014: Background Workers</b><br/>Scope: SystemStatus & Async Edge<br/>Status: Target"):::high
         
         FR08_Retention("<b>FR-08: Context Retention Policy</b><br/>Scope: Semantic Consolidation<br/>Status: Blocked by ADR-014"):::complex
@@ -138,7 +140,8 @@ graph TD
     FR17_Drive --> ADR12_Interface
     
     %% NUEVO FLUJO DE LA FASE 3
-    ADR12_Interface --> ADR14_Workers
+    ADR12_Interface --> ADR15_Router
+    ADR15_Router --> ADR14_Workers
     ADR14_Workers --> FR08_Retention
     FR08_Retention --> End((Production))
 ```
