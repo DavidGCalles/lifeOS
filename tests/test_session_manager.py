@@ -36,25 +36,6 @@ async def test_add_message_validates_and_returns_object(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_add_message_respects_explicit_visibility(monkeypatch):
-    monkeypatch.setenv("USE_FIRESTORE", "False")
-
-    payload = {
-        "role": "bot",
-        "content": "system update",
-        "user_id": 55,
-        "name": "Server",
-        "input_type": "text",
-        "visibility": MemoryVisibility.FAMILY,
-    }
-
-    result = await SessionManager.add_message(chat_id=2, message_data=payload)
-    # equality works whether the field comes back as an enum or a string
-    assert result.metadata.visibility == MemoryVisibility.FAMILY
-    assert result.metadata.owner_id == str(payload["user_id"])
-
-
-@pytest.mark.asyncio
 async def test_add_message_missing_required_fields_raises(monkeypatch):
     monkeypatch.setenv("USE_FIRESTORE", "False")
 

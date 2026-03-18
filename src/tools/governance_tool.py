@@ -2,6 +2,8 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from src.identity_manager import IdentityManager, UserContext, UserRole
 from src.logging_config import get_logger
+from src.utils.telegram_notifier import TelegramNotifier
+
 logger = get_logger(__name__) 
 
 class GovernanceInput(BaseModel):
@@ -51,6 +53,14 @@ class UserGovernanceTool(BaseTool):
             
             detail_msg = f" ({', '.join(details)})" if details else ""
             logger.info("User %s role updated to %s by admin %s", telegram_id, new_role.upper(), self._current_user.telegram_id)
+            
+            # NOTIFY THE USER
+            try:
+                notification = f"🔐 **System Update:** Your role has been updated to **{new_role.upper()}**."
+                await TelegramNotifier.send_message(telegram_id, notification)
+            except Exception as e:
+                logger.warning(f"Failed to notify user {telegram_id}: {e}")
+
             return f"✅ Decree Executed: User `{telegram_id}` is now **{new_role.upper()}**{detail_msg}."
         else:
             logger.error("Failed to update user %s with %s by admin %s", telegram_id, update_data, self._current_user.telegram_id)

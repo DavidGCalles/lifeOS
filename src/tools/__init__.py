@@ -3,11 +3,13 @@ from .calculator_tool import CalculatorTool
 from .search_tool import WebSearchTool
 from .memory_tool import RememberTool, RecallTool, ForgetTool
 from .delegation_tool import DelegateDeepThoughtTool
+from .calendar_audit_tool import DelegateCalendarAuditTool
 from .profile_tool import SetCalendarIDTool
 from .calendar_tool import CalendarListTool, CalendarAddTool, CalendarDeleteTool, CalendarUpdateTool
 from .google_drive_tool import DriveSearchTool, DriveReadTool
 from .governance_tool import UserGovernanceTool
 from .attendee_search_tool import AttendeeSearchTool
+from .pending_users_tool import GetPendingUsersTool
 # --- KITS DE HERRAMIENTAS ---
 MEMORY_KIT = {
     "save_memory": RememberTool(),
@@ -16,7 +18,6 @@ MEMORY_KIT = {
 }
 
 CALENDAR_KIT = {
-    "set_calendar_id": SetCalendarIDTool(),
     "calendar_list": CalendarListTool(),
     "calendar_add": CalendarAddTool(),
     "calendar_remove": CalendarDeleteTool(),
@@ -31,10 +32,12 @@ DRIVE_KIT = {
 
 # Mapeo oficial: Nombre en YAML -> Instancia de la herramienta
 TOOL_MAPPING = {
+    'set_calendar_id': SetCalendarIDTool(),
     'time': TimeCheckTool(),
     'math': CalculatorTool(),
     'search': WebSearchTool(),
     'delegate_deep_thought': DelegateDeepThoughtTool(),
+    'delegate_calendar_audit': DelegateCalendarAuditTool(),
     'memory_core': MEMORY_KIT,
     'calendar_core': CALENDAR_KIT,
     'drive_core': DRIVE_KIT,
@@ -42,5 +45,6 @@ TOOL_MAPPING = {
     **CALENDAR_KIT,
     **DRIVE_KIT,
     'user_governance': UserGovernanceTool(),
-    'attendee_search': AttendeeSearchTool()
+    'attendee_search': AttendeeSearchTool(),
+    'get_pending_users': GetPendingUsersTool()
 }

@@ -94,4 +94,5 @@ services:
       - "7997:8080"
     volumes:
       - ./data/infinity_models:/models
+    command: ["--model-id", "/data/model", "--model-id", "/data/nli_model"]
     restart: unless-stopped

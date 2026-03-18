@@ -282,3 +282,47 @@ class IdentityManager:
         
         logger.info(f"IdentityManager: No user found for email '{normalized_email}'")
         return None
+
+    @classmethod
+    async def get_users_by_role(cls, role: UserRole) -> list[UserContext]:
+        """
+        Retrieves all users with a specific role.
+        """
+        logger.debug("🔍 User lookup by role: role='%s'", role)
+        users = []
+        
+        # Firestore lookup
+        if cls._USE_FIRESTORE:
+            db = cls._get_firestore_client()
+            if db:
+                try:
+                    users_ref = db.collection('users').where('role', '==', role.value)
+                    async for doc in users_ref.stream():
+                        data = doc.to_dict()
+                        user_ctx = UserContext(
+                            telegram_id=doc.id,
+                            name=data.get("name", "Unknown"),
+                            role=role,
+                            description=data.get("description"),
+                            calendar_id=data.get("calendar_id")
+                        )
+                        users.append(user_ctx)
+                except Exception as e:
+                    logger.error(f"⚠️ Failed to search by role in Firestore: {e}")
+
+        # Local fallback lookup
+        cls._load_local_users()
+        for tid, data in cls._users_db.items():
+            if data.get('role', '').lower() == role.value:
+                 # Avoid duplicates if user is already found in Firestore
+                 if not any(u.telegram_id == tid for u in users):
+                    users.append(UserContext(
+                        telegram_id=tid,
+                        name=data.get("name"),
+                        role=role,
+                        description=data.get("description"),
+                        calendar_id=data.get("calendar_id")
+                    ))
+        
+        logger.info(f"IdentityManager: Found {len(users)} users with role '{role}'")
+        return users

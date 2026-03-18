@@ -28,7 +28,7 @@ class SetCalendarIDTool(BaseTool):
 
     async def _run(self, email: str) -> str:
         try:
-            logger.debug("📧 SetCalendarIDTool invoked with email: %s", email)
+            logger.info("📧 SetCalendarIDTool invoked with email: %s", email)
             if not self._current_user:
                 logger.error("No user context set for SetCalendarIDTool.")
                 return "❌ Error: No user context identified."

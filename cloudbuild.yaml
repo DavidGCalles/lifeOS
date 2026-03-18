@@ -2,22 +2,22 @@ steps:
   # =====================================================================================
   # STEP 1: MODEL HYDRATION (Conditional)
   # =====================================================================================
-  # 1.a. Check if the "sanitized" model already exists in our GCS bucket.
+  # 1.a. Check if BOTH models already exist in our GCS bucket.
   - name: 'gcr.io/cloud-builders/gsutil'
     id: 'check-model-in-gcs'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        if gsutil -q stat gs://lifeos-assets/models/e5-small-sanitized/config.json; then
-          echo "✅ Model already exists in GCS. Skipping hydration."
+        if gsutil -q stat gs://lifeos-assets/models/e5-small-sanitized/config.json && gsutil -q stat gs://lifeos-assets/models/nli-model/config.json; then
+          echo "✅ Models already exist in GCS. Skipping hydration."
           # Create a flag file to signal that the download should be skipped.
           touch /workspace/skip_hydration.flag
         else
-          echo "📦 Model not found in GCS. Starting hydration process..."
+          echo "📦 Models not found in GCS (or incomplete). Starting hydration process..."
         fi
 
-  # 1.b. If the model is NOT in GCS, prepare it.
+  # 1.b. If the models are NOT in GCS, prepare them.
   - name: 'python:3.9-slim'
     id: 'prepare-model'
     entrypoint: 'bash'
@@ -26,7 +26,7 @@ steps:
       - |
         if [ ! -f /workspace/skip_hydration.flag ]; then
           echo "🐍 Installing dependencies for model preparation..."
-          pip install sentence-transformers
+          pip install sentence-transformers transformers
           
           echo "🧠 Running model preparation script..."
           python3 scripts/prepare_model.py
@@ -35,7 +35,7 @@ steps:
         fi
     waitFor: ['check-model-in-gcs']
 
-  # 1.c. If the model was prepared, upload it to GCS.
+  # 1.c. If the models were prepared, upload them to GCS.
   - name: 'gcr.io/cloud-builders/gsutil'
     id: 'upload-model'
     entrypoint: 'bash'
@@ -43,28 +43,30 @@ steps:
       - '-c'
       - |
         if [ ! -f /workspace/skip_hydration.flag ]; then
-          echo "☁️ Uploading sanitized model to GCS..."
+          echo "☁️ Uploading sanitized models to GCS..."
           gsutil -m cp -r models/e5-small-sanitized gs://lifeos-assets/models/
+          gsutil -m cp -r models/nli-model gs://lifeos-assets/models/
         else
           echo "Skipping model upload."
         fi
     waitFor: ['prepare-model']
 
-  # 1.d. Download the model from GCS ONLY IF it wasn't generated locally
+  # 1.d. Download the models from GCS ONLY IF they weren't generated locally
   - name: 'gcr.io/cloud-builders/gsutil'
     id: 'fetch-model'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # This step runs only if the hydration was skipped, meaning the model
-        # already existed in GCS and needs to be downloaded for the build.
+        # This step runs only if the hydration was skipped, meaning the models
+        # already existed in GCS and need to be downloaded for the build.
         if [ -f /workspace/skip_hydration.flag ]; then
-          echo "Fetching pre-existing model from GCS for Docker build..."
+          echo "Fetching pre-existing models from GCS for Docker build..."
           mkdir -p models
           gsutil -m cp -r gs://lifeos-assets/models/e5-small-sanitized models/
+          gsutil -m cp -r gs://lifeos-assets/models/nli-model models/
         else
-          echo "Skipping GCS download because model was generated locally."
+          echo "Skipping GCS download because models were generated locally."
         fi
     waitFor: ['upload-model']
 
@@ -148,11 +150,13 @@ steps:
       - '--region=${_REGION}'
       - '--platform=managed'
       - '--set-secrets=INFINITY_API_KEY=INFINITY_API_KEY:latest'
-      - '--memory=4Gi'
+      - '--memory=4896Mi'
       - '--cpu=2'
       - '--cpu-boost'
       - '--timeout=600'
       - '--allow-unauthenticated'
+      - '--command=sh'
+      - '--args=-c,infinity_emb --model-id /data/model --model-id /data/nli_model'
     id: 'deploy-embeddings'
     waitFor: ['push-embeddings']
 

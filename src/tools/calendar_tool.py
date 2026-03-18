@@ -238,10 +238,10 @@ class CalendarAddTool(BaseTool):
                     successes.append(target)
                     logger.debug(f"  ✓ {target}")
                 except HttpError as he:
-                    logger.debug(f"  ⚠️ {target}: HTTP {he.resp.status}")
+                    logger.error(f"  ⚠️ {target}: HTTP {he.resp.status}")
                     failures.append(target)
                 except Exception as e:
-                    logger.debug(f"  ⚠️ {target}: {type(e).__name__}")
+                    logger.error(f"  ⚠️ {target}: {type(e).__name__}")
                     failures.append(target)
 
             # Build summary
@@ -273,7 +273,10 @@ class CalendarAddTool(BaseTool):
                     except Exception:
                         logger.debug(f"  ⚠️ Telegram notification failed")
 
-            logger.info(f"✅ Event created: {summary}")
+            if successes:
+                logger.info(f"✅ Event created: {summary} in {successes}")
+            else:
+                logger.warning(f"⚠️ Event creation failed for all targets. Failures: {failures}")
             return summary_msg
 
         except Exception as e:
