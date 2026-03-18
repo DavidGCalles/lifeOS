@@ -39,7 +39,11 @@ class DelegateDeepThoughtTool(BaseTool):
         await TelegramNotifier.send_message(self._current_user.telegram_id, handoff_message)
 
         # 2. Configuración (OK)
-        worker_url = os.getenv("WORKER_URL", "http://localhost:8001/system/tasks/deep_analysis")
+        worker_host = os.getenv("WORKER_HOST")
+        if not worker_host:
+            logger.error("WORKER_HOST environment variable is not set.")
+            return "Error: No se ha configurado el sistema de análisis profundo."
+        worker_url = f"{worker_host}/system/tasks/deep_analysis"
         payload = self._current_user.model_dump()  # Get user context as dict
         payload["user_request"] = user_request  # Add the user's request to the payload
 
