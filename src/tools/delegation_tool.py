@@ -12,6 +12,7 @@ logger = get_logger(__name__)
 class DelegateDeepThoughtInput(BaseModel):
     """Input schema for delegating a complex task."""
     user_request: str = Field(..., description="The user's detailed and complex request for deep analysis.")
+    handoff_message: str = Field(..., description="A natural, contextualized acknowledgment string explaining the delay to the user.")
 
 class DelegateDeepThoughtTool(BaseTool):
     name: str = "delegate_deep_thought"
@@ -28,18 +29,19 @@ class DelegateDeepThoughtTool(BaseTool):
         """Injects the current user context before executing the tool."""
         self._current_user = user
 
-    async def _arun(self, user_request: str) -> str:
+    async def _arun(self, user_request: str, handoff_message: str) -> str:
         if not self._current_user:
             return "Error: User context is not set."
 
         logger.info(f"Delegating deep thought for user {self._current_user.telegram_id}...")
 
         # 1. Notificación al usuario (OK)
-        await TelegramNotifier.send_message(self._current_user.telegram_id, "Voy a buscar...")
+        await TelegramNotifier.send_message(self._current_user.telegram_id, handoff_message)
 
         # 2. Configuración (OK)
         worker_url = os.getenv("WORKER_URL", "http://localhost:8001/system/tasks/deep_analysis")
-        payload = { ... }
+        payload = self._current_user.model_dump()  # Get user context as dict
+        payload["user_request"] = user_request  # Add the user's request to the payload
 
         # 3. CAMBIO CRÍTICO: Esperar al POST
         try:
@@ -56,7 +58,7 @@ class DelegateDeepThoughtTool(BaseTool):
         # 4. Ahora sí, cortamos el flujo del agente
         return "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY"
 
-    def _run(self, user_request: str) -> str:
+    def _run(self, user_request: str, handoff_message: str) -> str:
         """Synchronous wrapper for the async run method."""
         # This is a fallback, but the agent should ideally call _arun.
-        return asyncio.run(self._arun(user_request))
+        return asyncio.run(self._arun(user_request, handoff_message))
