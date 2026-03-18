@@ -72,7 +72,8 @@ class ZeroShotClient:
             raw_scores (bool): Whether to return raw logits instead of probabilities.
 
         Returns:
-            dict[str, float]: A dictionary mapping labels to their entailment - contradiction delta scores.
+            dict[str, float]: A dictionary mapping labels to their entailment - contradiction
+            delta scores.
                               e.g., {"finance": 0.92, "health": -0.15}
             None: If the request fails.
         """
@@ -142,10 +143,8 @@ class ZeroShotClient:
                         to meet the confidence/margin thresholds.
         """
         start_time = time.time()
-        
         # Create reverse mapping: hypothesis text -> agent key
         hypothesis_to_agent = {v: k for k, v in hipotheses.items()}
-        
         # Run classification
         scores = self.classify(text, list(hipotheses.values()))
         if not scores:
@@ -158,7 +157,6 @@ class ZeroShotClient:
             agent_key = hypothesis_to_agent.get(hypothesis)
             if agent_key and agent_key in valid_agents:
                 valid_scores[hypothesis] = score
-                
         scores = valid_scores
         if not scores:
             logger.info("ℹ️ Zero-Shot: No valid agent matches found after filtering.")
@@ -173,16 +171,12 @@ class ZeroShotClient:
             agent_key = hypothesis_to_agent.get(hypothesis)
             mapped_scores.append((agent_key, score))
         sorted_scores = mapped_scores
-        
         # Log all probabilities
         logger.info("📊 Zero-Shot Probabilities: %s", json.dumps(sorted_scores))
-        
         if not sorted_scores:
             logger.info("ℹ️ Zero-Shot: No valid agent matches found.")
             return None
-            
         top_agent, top_score = sorted_scores[0]
-        
         #Confidence check
         confidence_pass = False
         if top_score > confidence_threshold:
@@ -197,7 +191,6 @@ class ZeroShotClient:
         if len(sorted_scores) > 1:
             second_score = sorted_scores[1][1]
             margin_pass = self._check_margin(top_score, second_score, margin_threshold)
-                            
         if confidence_pass and margin_pass:
             elapsed = time.time() - start_time
             logger.info(
