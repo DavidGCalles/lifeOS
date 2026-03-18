@@ -244,7 +244,7 @@ class CrewOrchestrator:
                     
                 return result
             else:
-                logger.debug("🔧 Crew Agent execution path (slow)")
+                logger.info("🔧 Crew Agent execution path (slow)")
                 if isinstance(user_message, list):
                     text_content = next(
                         (x['text'] for x in user_message if x['type'] == 'text'),

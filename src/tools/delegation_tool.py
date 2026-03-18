@@ -29,41 +29,31 @@ class DelegateDeepThoughtTool(BaseTool):
         self._current_user = user
 
     async def _arun(self, user_request: str) -> str:
-        """
-        Invokes the tool asynchronously to delegate a complex task to a background worker.
-        """
         if not self._current_user:
-            return "Error: User context is not set. Cannot delegate task."
+            return "Error: User context is not set."
 
-        logger.info(f"Delegating deep thought for user {self._current_user.telegram_id} with request: {user_request}")
+        logger.info(f"Delegating deep thought for user {self._current_user.telegram_id}...")
 
-        # 1. Directly send acknowledgment to the user via Telegram
-        acknowledgment_message = "Voy a buscar y ordenar bien en la memoria... Te aviso cuando tenga una respuesta."
-        await TelegramNotifier.send_message(self._current_user.telegram_id, acknowledgment_message)
+        # 1. Notificación al usuario (OK)
+        await TelegramNotifier.send_message(self._current_user.telegram_id, "Voy a buscar...")
 
-        # 2. Prepare payload and headers for the worker
+        # 2. Configuración (OK)
         worker_url = os.getenv("WORKER_URL", "http://localhost:8001/system/tasks/deep_analysis")
-        api_key = os.getenv("INTERNAL_API_KEY")
-        headers = {"Authorization": f"Bearer {api_key}"}
-        
-        payload = {
-            "user_id": self._current_user.telegram_id,
-            "session_id": self._current_user.session_id,
-            "user_request": user_request
-        }
+        payload = { ... }
 
-        # 3. Asynchronously dispatch the task (fire-and-forget)
-        async def dispatch_task():
-            try:
-                async with httpx.AsyncClient() as client:
-                    await client.post(worker_url, json=payload, headers=headers, timeout=5)
-                logger.info("Task successfully dispatched to worker for user %s.", self._current_user.telegram_id)
-            except httpx.RequestError as e:
-                logger.error(f"Failed to dispatch task to worker for user %s: {e}", self._current_user.telegram_id)
+        # 3. CAMBIO CRÍTICO: Esperar al POST
+        try:
+            async with httpx.AsyncClient() as client:
+                # Esperamos a que el worker responda al menos un 202 Accepted o 200 OK
+                headers = {"Authorization": os.getenv("INTERNAL_API_KEY", "")}
+                response = await client.post(worker_url, json=payload, headers=headers, timeout=10)
+                response.raise_for_status()
+                logger.info("✅ Task ACKNOWLEDGED by worker.")
+        except Exception as e:
+            logger.error(f"❌ Worker unreachable: {e}")
+            return f"Error: No pude contactar con el sistema de análisis profundo. {str(e)}"
 
-        asyncio.create_task(dispatch_task())
-
-        # 4. Return a silent stop message to the LLM
+        # 4. Ahora sí, cortamos el flujo del agente
         return "TOOL_HANDOFF_COMPLETE_DO_NOT_REPLY"
 
     def _run(self, user_request: str) -> str:

@@ -45,7 +45,6 @@ class SetCalendarIDTool(BaseTool):
                 self._current_user.telegram_id, 
                 {"calendar_id": normalized_email}
             )
-            logger.warning("AFTER DB UPDATE ATTEMPT, SUCCESS=%s", success)
             if success:
                 # --- FIX CRÍTICO: ACTUALIZACIÓN EN MEMORIA ("HOT PATCH") ---
                 # Esto actualiza la referencia compartida que usan las otras tools
