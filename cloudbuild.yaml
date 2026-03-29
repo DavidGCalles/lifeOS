@@ -189,7 +189,8 @@ steps:
           QDRANT_API_KEY=QDRANT_API_KEY:latest,
           GEMINI_API_KEY=GEMINI_API_KEY:latest,
           ADMIN_USER_ID=ADMIN_USER_ID:latest,
-          INTERNAL_API_KEY=INTERNAL_API_KEY:latest
+          INTERNAL_API_KEY=INTERNAL_API_KEY:latest,
+          INFINITY_API_KEY=INFINITY_API_KEY:latest
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
