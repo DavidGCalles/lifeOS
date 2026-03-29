@@ -133,6 +133,8 @@ steps:
       - '--image=gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA'
       - '--region=${_REGION}'
       - '--platform=managed'
+      - '--memory=2448Mi'
+      - '--cpu-boost'
       - '--allow-unauthenticated'
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,INFINITY_API_KEY=INFINITY_API_KEY:latest'
       - '--set-env-vars=EMBEDDING_API_BASE=${_EMBEDDING_API_BASE}'
