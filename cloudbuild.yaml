@@ -218,7 +218,8 @@ steps:
       - >-
           QDRANT_API_KEY=QDRANT_API_KEY:latest,
           SYSTEM_CRON_TOKEN=SYSTEM_CRON_TOKEN:latest,
-          INTERNAL_API_KEY=INTERNAL_API_KEY:latest
+          INTERNAL_API_KEY=INTERNAL_API_KEY:latest,
+          INFINITY_API_KEY=INFINITY_API_KEY:latest
     id: 'deploy-worker'
     waitFor: ['push-backend']
 
