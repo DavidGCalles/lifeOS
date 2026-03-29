@@ -188,7 +188,8 @@ steps:
           TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest,
           QDRANT_API_KEY=QDRANT_API_KEY:latest,
           GEMINI_API_KEY=GEMINI_API_KEY:latest,
-          ADMIN_USER_ID=ADMIN_USER_ID:latest
+          ADMIN_USER_ID=ADMIN_USER_ID:latest,
+          INTERNAL_API_KEY=INTERNAL_API_KEY:latest
     id: 'deploy-backend'
     waitFor: ['push-backend']
 
@@ -215,7 +216,8 @@ steps:
       - '--set-secrets'
       - >-
           QDRANT_API_KEY=QDRANT_API_KEY:latest,
-          SYSTEM_CRON_TOKEN=SYSTEM_CRON_TOKEN:latest
+          SYSTEM_CRON_TOKEN=SYSTEM_CRON_TOKEN:latest,
+          INTERNAL_API_KEY=INTERNAL_API_KEY:latest
     id: 'deploy-worker'
     waitFor: ['push-backend']
 
