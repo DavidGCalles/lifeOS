@@ -6,7 +6,9 @@ import requests
 
 class InfinityClient:
     '''Client for interacting with the Infinity API for classification tasks.'''
-    def __init__(self, host="http://lifeos_embeddings", port="8080"):
+    def __init__(self, host=None, port="8080"):
+        if host is None:
+            raise ValueError("Host must be provided for InfinityClient.")
         self.base_url = f"{host}:{port}"
         self.api_key = os.getenv("INFINITY_API_KEY")
         if not self.api_key:

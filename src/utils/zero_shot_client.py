@@ -2,6 +2,7 @@
 the premise/hypothesis pairs and routing the classification request to the InfinityClient.
 It abstracts away the details of how the NLI model expects input and how to interpret the
 results, providing a simple interface for zero-shot classification tasks.'''
+import os
 import logging
 import time
 import json
@@ -12,7 +13,22 @@ logger = logging.getLogger(__name__)
 class ZeroShotClient:
     '''Client for performing zero-shot classification using an NLI model via InfinityClient.'''
     def __init__(self, infinity_client: InfinityClient | None = None):
-        self.client = infinity_client or InfinityClient()
+        if not infinity_client:
+            logger.info("ZeroShotClient: No InfinityClient provided, initializing default client.")
+            port = "8080"
+            host = None
+            INFINITY_HOST = os.getenv("EMBEDDING_API_BASE")
+            if not INFINITY_HOST:
+                raise ValueError("EMBEDDING_API_BASE environment variable not set for ZeroShotClient.")
+            if len(INFINITY_HOST.split(":")) > 2:
+                host = INFINITY_HOST.split(":")[1]
+                port = INFINITY_HOST.split(":")[2]
+            elif len(INFINITY_HOST.split(":")) == 1:
+                host = INFINITY_HOST
+            logger.info("ZeroShotClient: Using InfinityClient with host=%s and port=%s", host, port)    
+            self.client = InfinityClient(host=host, port=port)
+        else:
+            self.client = infinity_client
 
     def _construct_pairs(self, text: str, labels: list[str],
                          hypothesis_template: str = "This example is {}.") -> list[str]:
