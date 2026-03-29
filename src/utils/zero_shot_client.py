@@ -21,9 +21,9 @@ class ZeroShotClient:
             if not INFINITY_HOST:
                 raise ValueError("EMBEDDING_API_BASE environment variable not set for ZeroShotClient.")
             if len(INFINITY_HOST.split(":")) > 2:
-                host = INFINITY_HOST.split(":")[1]
+                host = INFINITY_HOST.split(":")[0] + ":" + INFINITY_HOST.split(":")[1]
                 port = INFINITY_HOST.split(":")[2]
-            elif len(INFINITY_HOST.split(":")) == 1:
+            elif len(INFINITY_HOST.split(":")) == 2:
                 host = INFINITY_HOST
             logger.info("ZeroShotClient: Using InfinityClient with host=%s and port=%s", host, port)    
             self.client = InfinityClient(host=host, port=port)
