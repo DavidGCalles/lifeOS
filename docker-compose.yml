@@ -70,7 +70,6 @@ services:
     # Arranca con debug para ver si saltan los fallbacks
     command: "--config /app/config.yaml --port 4000 --detailed_debug"
 
-
   qdrant:
     image: qdrant/qdrant:latest
     container_name: lifeos_qdrant
@@ -96,3 +95,21 @@ services:
       - ./data/infinity_models:/models
     command: ["--model-id", "/data/model", "--model-id", "/data/nli_model"]
     restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: lifeos_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lifeos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-lifeos_edge}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-lifeos_user} -d $${POSTGRES_DB:-lifeos_edge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

@@ -36,7 +36,7 @@ Thumbs.db
 .idea/
 
 # --- DATABASE (QDRANT) ---
-data/qdrant/
+data/
 
 # --- LITELLM (Opcional) ---
 # Si decides guardar datos de costes locales
