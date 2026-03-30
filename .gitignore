@@ -1,5 +1,6 @@
-litellm_config.localonly.yaml
-litellm_config.prod.yaml
+src/config/litellm_config.localonly.yaml
+src/config/litellm_config.prod.yaml
+src/config/litellm_config.test.yaml
 # --- 🔐 SECRETOS (Ni se te ocurra comitear esto) ---
 .env
 .env.*

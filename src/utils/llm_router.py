@@ -43,7 +43,7 @@ class LiteLLMRouter:
         # ---------------------------------------
 
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        config_path = os.path.join(base_dir, "litellm_config.yaml")
+        config_path = os.path.join(base_dir, "src", "config", "litellm_config.yaml")
 
         if not os.path.exists(config_path):
             error_msg = f"❌ LiteLLMRouter: Config file not found at {config_path}"
