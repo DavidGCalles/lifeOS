@@ -5,7 +5,7 @@ from pydantic import ValidationError
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.memory_manager import VectorMemoryManager
+from src.managers.memory_manager import VectorMemoryManager
 from src.schemas.memory import (
     MemoryDomainType,
     EpisodicMemoryItem,

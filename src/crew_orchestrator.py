@@ -14,7 +14,7 @@ from typing import Any
 from crewai import Crew
 from src.crew_agents import LifeOSAgents
 from src.tasks import LifeOSTasks
-from src.identity_manager import UserContext
+from src.managers.identity_manager import UserContext
 from src.memory_gateway import MemoryGateway
 from src.schemas.memory import MemoryCategory, MemoryType
 from src.utils.zero_shot_client import ZeroShotClient

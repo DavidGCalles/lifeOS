@@ -16,7 +16,7 @@ from src.schemas.memory import (
     MemoryType,
     MemorySource,
 )
-from src.identity_manager import IdentityManager
+from src.managers.identity_manager import IdentityManager
 from src.system_status import SystemStatusManager
 
 

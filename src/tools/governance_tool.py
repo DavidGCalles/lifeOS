@@ -1,6 +1,6 @@
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
-from src.identity_manager import IdentityManager, UserContext, UserRole
+from src.managers.identity_manager import IdentityManager, UserContext, UserRole
 from src.logging_config import get_logger
 from src.utils.telegram_notifier import TelegramNotifier
 

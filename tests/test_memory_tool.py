@@ -1,7 +1,7 @@
 import pytest
 
 from src.tools.memory_tool import RememberTool, RecallTool, ForgetTool
-from src.identity_manager import UserContext, UserRole
+from src.managers.identity_manager import UserContext, UserRole
 from src.schemas.memory import (
     EpisodicMemoryItem,
     EpisodicMemoryMetadata,

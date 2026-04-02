@@ -6,11 +6,11 @@ from typing import Any, Dict, List, Optional, Union
 from google.cloud.firestore import Query
 from qdrant_client import models
 
-from src.identity_manager import UserContext, UserRole
+from src.managers.identity_manager import UserContext, UserRole
 from src.schemas.memory import MemoryVisibility, EpisodicMemoryItem
 from src.schemas.system_status import SystemStatus
-from src.utils.session_manager import SessionManager
-from src.memory_manager import VectorMemoryManager
+from src.managers.session_manager import SessionManager
+from src.managers.memory_manager import VectorMemoryManager
 
 logger = logging.getLogger(__name__)
 

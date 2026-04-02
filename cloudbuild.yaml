@@ -92,7 +92,7 @@ steps:
     waitFor: ['-']
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-f', 'Dockerfile.litellm', '-t', 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA', '-t', 'gcr.io/$PROJECT_ID/lifeos-litellm:latest', '.']
+    args: ['build','-f', 'Dockerfile.litellm', '--build-arg', 'ENVIRONMENT=cloud', '-t', 'gcr.io/$PROJECT_ID/lifeos-litellm:$SHORT_SHA', '-t', 'gcr.io/$PROJECT_ID/lifeos-litellm:latest', '.']
     id: 'build-litellm'
     waitFor: ['-']
 
@@ -179,8 +179,7 @@ steps:
           WEBHOOK_URL=${_WEBHOOK_URL},
           LITELLM_URL=${_LITELLM_URL},
           CREWAI_TRACING_ENABLED=false,
-          USE_FIRESTORE=TRUE,
-          FIRESTORE_DB_NAME=lifeos,
+          ENVIRONMENT=cloud,
           QDRANT_HOST=${_QDRANT_HOST},
           EMBEDDING_API_BASE=${_EMBEDDING_API_BASE}
       - '--set-secrets'

@@ -4,6 +4,7 @@ import time
 from openai import AsyncOpenAI
 from qdrant_client import AsyncQdrantClient, models
 from src.schemas.memory import EpisodicMemoryItem, EpisodicMemoryMetadata
+from src.managers.config_manager import config_manager
 
 from src.logging_config import configure_logging
 configure_logging(level=logging.INFO)
@@ -66,9 +67,9 @@ class VectorMemoryManager:
         any network activity occurs.
         """
         if self._client is None:
-            host = os.getenv("QDRANT_HOST", "qdrant")
-            port = int(os.getenv("QDRANT_PORT", 6333))
-            api_key = os.getenv("QDRANT_API_KEY")
+            q_config = config_manager.get_qdrant_config()
+            host = q_config["url"]
+            api_key = q_config["api_key"]
 
             logger.info("🔌 Connecting to Memory Store...")
 
@@ -77,8 +78,10 @@ class VectorMemoryManager:
                     logger.info(f"   -> Mode: Cloud, URL: {host}")
                     self._client = AsyncQdrantClient(url=host, api_key=api_key)
                 else:
-                    logger.info(f"   -> Mode: Docker, Host: {host}, Port: {port}")
-                    self._client = AsyncQdrantClient(host=host, port=port)
+                    logger.info(f"   -> Mode: Docker, Host: {host}")
+                    # Assume HTTP connection for local instances
+                    url = host if "://" in host else f"http://{host}:6333"
+                    self._client = AsyncQdrantClient(url=url)
             except Exception as e:
                 logger.error(f"Failed to connect to Qdrant: {e}", exc_info=True)
                 raise ConnectionError(f"Failed to connect to Qdrant: {e}")

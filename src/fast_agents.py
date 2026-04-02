@@ -5,7 +5,7 @@ import inspect
 from typing import Any
 from pydantic import PrivateAttr
 from src.utils.tool_converter import convert_tools_to_openai_schema
-from src.identity_manager import UserContext
+from src.managers.identity_manager import UserContext
 from src.utils.llm_router import LiteLLMRouter
 
 logger = logging.getLogger(__name__)

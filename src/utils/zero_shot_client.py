@@ -7,6 +7,7 @@ import logging
 import time
 import json
 from src.utils.infinity_client import InfinityClient
+from src.managers.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +18,10 @@ class ZeroShotClient:
             logger.info("ZeroShotClient: No InfinityClient provided, initializing default client.")
             port = "8080"
             host = None
-            INFINITY_HOST = os.getenv("EMBEDDING_API_BASE")
+            emb_config = config_manager.get_embedding_config()
+            INFINITY_HOST = emb_config["api_base"]
             if not INFINITY_HOST:
-                raise ValueError("EMBEDDING_API_BASE environment variable not set for ZeroShotClient.")
+                raise ValueError("EMBEDDING_API_BASE not provided by ConfigManager.")
             if len(INFINITY_HOST.split(":")) > 2:
                 host = INFINITY_HOST.split(":")[0] + ":" + INFINITY_HOST.split(":")[1]
                 port = INFINITY_HOST.split(":")[2]

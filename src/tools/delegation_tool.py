@@ -4,7 +4,7 @@ import httpx
 import os
 import asyncio
 from src.logging_config import get_logger
-from src.identity_manager import UserContext
+from src.managers.identity_manager import UserContext
 from src.utils.telegram_notifier import TelegramNotifier
 
 logger = get_logger(__name__)

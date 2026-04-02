@@ -10,7 +10,7 @@ from src.schemas.memory import (
     MemorySource,
     MemoryDomainType,
 )
-from src.identity_manager import UserContext
+from src.managers.identity_manager import UserContext
 from src.memory_gateway import MemoryGateway
 from src.logging_config import get_logger
 logger = get_logger(__name__) 

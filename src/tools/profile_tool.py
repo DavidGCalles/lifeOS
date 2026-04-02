@@ -1,7 +1,7 @@
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field, PrivateAttr
 from email_validator import validate_email, EmailNotValidError
-from src.identity_manager import IdentityManager, UserContext
+from src.managers.identity_manager import IdentityManager, UserContext
 import logging
 
 logger = logging.getLogger(__name__)

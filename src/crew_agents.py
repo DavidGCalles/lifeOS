@@ -14,8 +14,8 @@ assignment.
 import os
 import logging
 import yaml
-from crewai import Agent
-from src.llm_config import llm
+from crewai import Agent, LLM
+from src.managers.config_manager import config_manager
 from src.tools import TOOL_MAPPING
 from src.fast_agents import FastTrackAgent
 
@@ -84,12 +84,19 @@ class LifeOSAgents:
         execution_mode = agent_data.get('execution_mode', 'crew')
         target_model_name = agent_data.get('model_name', 'crewai-proxy')
 
+        llm_config = config_manager.get_llm_config()
+        dynamic_llm = LLM(
+            model=f"openai/{target_model_name}",
+            base_url=llm_config["base_url"],
+            api_key=llm_config["api_key"]
+        )
+
         agent_params = {
             'role': agent_data['role'],
             'goal': agent_data['goal'],
             'backstory': agent_data['backstory'],
             'tools': agent_tools,
-            'llm': llm
+            'llm': dynamic_llm
         }
 
         if execution_mode == 'fast':
@@ -100,7 +107,7 @@ class LifeOSAgents:
             return FastTrackAgent(**agent_params, model_name=target_model_name)
         else:
             logger.info("🐢 Creando CrewAI Agent para %s", agent_key.upper())
-            # Los agentes normales usan el 'llm' global configurado en src/llm_config.py
+            # Los agentes normales usan el 'dynamic_llm' configurado con config_manager
             agent_params['verbose'] = agent_data.get('verbose', True)
             agent_params['allow_delegation'] = agent_data.get('allow_delegation', False)
             return Agent(**agent_params)

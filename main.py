@@ -14,7 +14,7 @@ import asyncio
 
 from src.crew_orchestrator import CrewOrchestrator
 from src.memory_gateway import MemoryGateway
-from src.identity_manager import IdentityManager, UserRole
+from src.managers.identity_manager import IdentityManager, UserRole
 from src.utils.tool_context import inject_runtime_context
 from src.logging_config import configure_logging, install_grpc_noise_filter
 from src.social.shield import SocialShield

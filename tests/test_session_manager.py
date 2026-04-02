@@ -8,7 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pydantic import ValidationError
 
 from src.schemas.memory import MemoryVisibility, MemoryDomainType, SessionMessage
-from src.utils.session_manager import SessionManager
+from src.managers.session_manager import SessionManager
 
 
 @pytest.mark.asyncio

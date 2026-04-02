@@ -5,7 +5,7 @@ from qdrant_client import models
 # ensure src is on path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.identity_manager import UserContext, UserRole
+from src.managers.identity_manager import UserContext, UserRole
 from src.schemas.memory import (
     EpisodicMemoryItem,
     EpisodicMemoryMetadata,
@@ -14,7 +14,7 @@ from src.schemas.memory import (
     MemorySource,
 )
 from src.memory_gateway import MemoryGateway
-from src.memory_manager import VectorMemoryManager
+from src.managers.memory_manager import VectorMemoryManager
 
 @pytest.fixture
 def user_a_admin():
@@ -107,7 +107,7 @@ async def test_add_working_memory_and_metadata(monkeypatch):
     monkeypatch.setattr(MemoryGateway, "_query_session", classmethod(fake_query_session))
 
     # Patch SessionManager.add_message via MemoryGateway only for call capture
-    import src.utils.session_manager as session_manager_mod
+    import src.managers.session_manager as session_manager_mod
     async def fake_add_message(chat_id, message_data):
         calls['chat_id'] = chat_id
         calls['message_data'] = message_data
@@ -218,7 +218,7 @@ async def test_admin_can_access_family_memory(monkeypatch, user_a_admin):
                     return [family_item]
         return []
     monkeypatch.setattr(
-        __import__("src.memory_manager", fromlist=["VectorMemoryManager"]).VectorMemoryManager,
+        __import__("src.managers.memory_manager", fromlist=["VectorMemoryManager"]).VectorMemoryManager,
         "search_memory",
         fake_search_memory,
     )
@@ -251,7 +251,7 @@ async def test_guest_cannot_access_admin_private_qdrant(monkeypatch, user_a_admi
                     return [private_item]
         return []
     monkeypatch.setattr(
-        __import__("src.memory_manager", fromlist=["VectorMemoryManager"]).VectorMemoryManager,
+        __import__("src.managers.memory_manager", fromlist=["VectorMemoryManager"]).VectorMemoryManager,
         "search_memory",
         fake_search_memory,
     )

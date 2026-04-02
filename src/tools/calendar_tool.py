@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 from src.tools.google_base import GoogleServiceFactory
-from src.identity_manager import UserContext, IdentityManager
+from src.managers.identity_manager import UserContext, IdentityManager
 import asyncio
 from googleapiclient.errors import HttpError
 import pytz
