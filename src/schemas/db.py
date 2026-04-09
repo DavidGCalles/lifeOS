@@ -48,9 +48,17 @@ class DBUser(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     role: UserRole = Field(default=UserRole.GUEST)
     status: UserStatus = Field(default=UserStatus.PENDING)
+    
+    name: str = Field(default="Unknown", sa_column=Column(String(255)))
+    description: str | None = Field(default=None)
+    profile_metadata: dict[str, Any] = Field(
+        default_factory=dict, 
+        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    )
+
     created_at: datetime = Field(default_factory=utc_now)
 
-    # Relaciones inversas (Magia del ORM, no se guardan como columnas)
+    # Relaciones inversas
     telegram_identities: list["DBTelegramIdentity"] = Relationship(back_populates="user", cascade_delete=True)
     sessions: list["DBSession"] = Relationship(back_populates="user", cascade_delete=True)
     messages: list["DBMessage"] = Relationship(back_populates="owner", cascade_delete=True)
