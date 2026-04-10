@@ -4,7 +4,7 @@ from enum import Enum as PyEnum
 from typing import Any
 
 from sqlmodel import Field, SQLModel, Relationship
-from sqlalchemy import Column, String, text
+from sqlalchemy import BigInteger, Column, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 
 # Importamos los Enums compartidos con el dominio vectorial para no duplicar la fuente de la verdad
@@ -16,10 +16,7 @@ from src.schemas.memory import MemoryVisibility, MemoryDomainType
 # ==============================================================================
 class UserRole(str, PyEnum):
     ADMIN = "ADMIN"
-    FAMILY = "FAMILY"
-    EXTERNAL = "EXTERNAL"
-    PENDING = "PENDING"
-    BLOCKED = "BLOCKED"
+    USER = "USER"
     GUEST = "GUEST"
 
 class UserStatus(str, PyEnum):
@@ -70,7 +67,7 @@ class DBUser(SQLModel, table=True):
 class DBTelegramIdentity(SQLModel, table=True):
     __tablename__ = "telegram_identities"
 
-    telegram_id: int = Field(primary_key=True)
+    telegram_id: int = Field(sa_column=Column(BigInteger, primary_key=True))
     user_id: uuid.UUID = Field(foreign_key="users.id", index=True)
     created_at: datetime = Field(default_factory=utc_now)
 

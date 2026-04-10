@@ -3,12 +3,9 @@ PostgresIdentityManager: Implementación de IdentityManager usando SQLModel y As
 para PostgreSQL.
 '''
 import logging
-from typing import Any
-from uuid import UUID
 import json
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 from src.schemas.db import DBUser, DBTelegramIdentity, UserRole, UserStatus
 
 from src.managers.config_manager import config_manager
@@ -22,6 +19,7 @@ class UserContext(BaseModel):
     telegram_id: str
     name: str
     role: UserRole
+    status: UserStatus
     description: str | None = None
     calendar_id: str | None = None
 
@@ -46,7 +44,7 @@ class PostgresIdentityManager:
                     .join(DBTelegramIdentity, DBUser.id == DBTelegramIdentity.user_id)
                     .where(DBTelegramIdentity.telegram_id == int(telegram_id))
                 )
-                result = await session.exec(stmt)
+                result = await session.execute(stmt)
                 db_user = result.scalar_one_or_none()
 
                 # 2. Manejo de desconocido (Stranger)
@@ -55,7 +53,8 @@ class PostgresIdentityManager:
                     return UserContext(
                         telegram_id=tid_str,
                         name="Stranger",
-                        role=UserRole.PENDING,
+                        role=UserRole.GUEST,
+                        status = UserStatus.PENDING,
                         description="Unauthorized"
                     )
 
@@ -66,7 +65,8 @@ class PostgresIdentityManager:
                     try:
                         metadata = json.loads(metadata)
                     except json.JSONDecodeError:
-                        logger.warning("⚠️ Failed to parse profile_metadata for user %s", db_user.id)
+                        logger.warning("⚠️ Failed to parse profile_metadata for" \
+                        "user %s", db_user.id)
                         metadata = {}
 
                 # 4. Retorno del Contexto Limpio
@@ -74,6 +74,7 @@ class PostgresIdentityManager:
                     telegram_id=tid_str,
                     name=db_user.name,
                     role=db_user.role,
+                    status=db_user.status,
                     description=db_user.description,
                     calendar_id=metadata.get("calendar_id")
                 )
@@ -85,7 +86,8 @@ class PostgresIdentityManager:
                 return UserContext(
                     telegram_id=tid_str,
                     name="ErrorFallback",
-                    role=UserRole.PENDING,
+                    role=UserRole.GUEST,
+                    status=UserStatus.PENDING,
                     description="System Error during resolution"
                 )
 
@@ -129,15 +131,16 @@ class PostgresIdentityManager:
                 return True
             except Exception as e:
                 await session.rollback()
-                logger.error("❌ Error registering user %s: %s", user.telegram_id, str(e), exc_info=True)
+                logger.error("❌ Error registering user %s: %s",
+                             user.telegram_id, str(e), exc_info=True)
                 return False
 
     @classmethod
     async def update_user(cls, telegram_id: int | str, data: dict) -> bool:
+        ''' Actualiza campos de un usuario existente. '''
         tid_str = str(telegram_id)
-        
-        logger.debug("🔄 User update initiated: telegram_id=%s fields=%s", tid_str, list(data.keys()))
-        
+        logger.debug("🔄 User update initiated: telegram_id=%s fields=%s",
+                     tid_str, list(data.keys()))
         async with config_manager.get_async_session() as session:
             try:
                 # Find the user
@@ -148,7 +151,6 @@ class PostgresIdentityManager:
                 )
                 result = await session.exec(stmt)
                 db_user = result.scalar_one_or_none()
-                
                 if not db_user:
                     logger.warning("User not found for update: %s", tid_str)
                     return False
@@ -179,24 +181,20 @@ class PostgresIdentityManager:
         Intenta encontrar un UserContext por nombre.
         """
         logger.debug("🔍 User lookup by name: name='%s'", name)
-        
-        normalized_name = name.strip().lower()
-
         async with config_manager.get_async_session() as session:
             try:
                 stmt = select(DBUser).where(DBUser.name.ilike(name))
                 result = await session.exec(stmt)
                 db_user = result.first()
-                
                 if not db_user:
                     logger.info("No user found for name '%s'", name)
                     return None
 
                 # Get telegram_id
-                telegram_stmt = select(DBTelegramIdentity).where(DBTelegramIdentity.user_id == db_user.id)
+                telegram_stmt = select(DBTelegramIdentity).where(
+                    DBTelegramIdentity.user_id == db_user.id)
                 telegram_result = await session.exec(telegram_stmt)
                 telegram_identity = telegram_result.first()
-                
                 if not telegram_identity:
                     logger.warning("User %s has no telegram identity", db_user.id)
                     return None
@@ -206,6 +204,7 @@ class PostgresIdentityManager:
                     telegram_id=str(telegram_identity.telegram_id),
                     name=db_user.name,
                     role=db_user.role,
+                    status=db_user.status,
                     description=db_user.description,
                     calendar_id=metadata.get("calendar_id")
                 )
@@ -224,19 +223,19 @@ class PostgresIdentityManager:
         async with config_manager.get_async_session() as session:
             try:
                 # Search in profile_metadata for calendar_id
-                stmt = select(DBUser).where(DBUser.profile_metadata.contains({"calendar_id": normalized_email}))
+                stmt = select(DBUser).where(DBUser.profile_metadata.contains(
+                    {"calendar_id": normalized_email}))
                 result = await session.exec(stmt)
                 db_user = result.first()
-                
                 if not db_user:
                     logger.info("No user found for email '%s'", normalized_email)
                     return None
 
                 # Get telegram_id
-                telegram_stmt = select(DBTelegramIdentity).where(DBTelegramIdentity.user_id == db_user.id)
+                telegram_stmt = select(DBTelegramIdentity).where(
+                    DBTelegramIdentity.user_id == db_user.id)
                 telegram_result = await session.exec(telegram_stmt)
                 telegram_identity = telegram_result.first()
-                
                 if not telegram_identity:
                     logger.warning("User %s has no telegram identity", db_user.id)
                     return None
@@ -246,6 +245,7 @@ class PostgresIdentityManager:
                     telegram_id=str(telegram_identity.telegram_id),
                     name=db_user.name,
                     role=db_user.role,
+                    status=db_user.status,
                     description=db_user.description,
                     calendar_id=metadata.get("calendar_id")
                 )
@@ -260,16 +260,15 @@ class PostgresIdentityManager:
         """
         logger.debug("🔍 User lookup by role: role='%s'", role)
         users = []
-        
         async with config_manager.get_async_session() as session:
             try:
                 stmt = select(DBUser).where(DBUser.role == role)
                 result = await session.exec(stmt)
                 db_users = result.all()
-                
                 for db_user in db_users:
                     # Get telegram_id
-                    telegram_stmt = select(DBTelegramIdentity).where(DBTelegramIdentity.user_id == db_user.id)
+                    telegram_stmt = select(DBTelegramIdentity).where(
+                        DBTelegramIdentity.user_id == db_user.id)
                     telegram_result = await session.exec(telegram_stmt)
                     telegram_identity = telegram_result.first()
                     
@@ -279,6 +278,7 @@ class PostgresIdentityManager:
                             telegram_id=str(telegram_identity.telegram_id),
                             name=db_user.name,
                             role=db_user.role,
+                            status=db_user.status,
                             description=db_user.description,
                             calendar_id=metadata.get("calendar_id")
                         ))

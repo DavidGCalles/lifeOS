@@ -14,7 +14,8 @@ import asyncio
 
 from src.crew_orchestrator import CrewOrchestrator
 from src.memory_gateway import MemoryGateway
-from src.managers.identity_manager import IdentityManager, UserRole
+from src.managers.postgres_identity_manager import PostgresIdentityManager as IdentityManager
+from src.schemas.db import UserRole, UserStatus
 from src.utils.tool_context import inject_runtime_context
 from src.logging_config import configure_logging, install_grpc_noise_filter
 from src.social.shield import SocialShield
@@ -127,11 +128,11 @@ async def chat_logic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     current_user = await IdentityManager.get_user(user_id)
     
     # --- 🚧 PROTOCOLO DE INTERCEPCIÓN 🚧 ---
-    if current_user.role == UserRole.BLOCKED:
+    if current_user.status == UserStatus.BANNED:
         logging.info(f"🚫 Usuario bloqueado {user_id} intentó contactar.")
         return 
 
-    if current_user.role == UserRole.PENDING:
+    if current_user.status == UserStatus.PENDING:
         username = update.effective_user.username or "NoUsername"
         first_name = update.effective_user.first_name or "Unknown"
         
