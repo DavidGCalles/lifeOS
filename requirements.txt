@@ -34,3 +34,5 @@ pytest
 pytest-asyncio
 pyyaml
 croniter
+sqlmodel
+asyncpg

@@ -1,6 +1,7 @@
 import os
 import logging
 from typing import Any
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,13 @@ class ConfigManager:
         logger.info(f"⚙️ Bootstrapping ConfigManager with profile: {self.environment}")
         self._resolve_profile()
         self._initialized = True
+
+        # Initialize async database engine
+        self._async_engine = create_async_engine(
+            self.get_postgres_url(),
+            echo=False,  # Set to True for SQL debugging
+            pool_pre_ping=True,
+        )
 
     def _resolve_profile(self):
         """Resolves configuration based on the active environment profile."""
@@ -66,7 +74,7 @@ class ConfigManager:
             
         self.config["qdrant_host"] = qdrant_host
         self.config["qdrant_api_key"] = qdrant_api_key
-        self.config["postgres_url"] = postgres_url
+        self.config["postgres_url"] = self._ensure_asyncpg_url(postgres_url)
 
     def _resolve_edge_profile(self):
         """
@@ -85,7 +93,9 @@ class ConfigManager:
         pg_host = os.getenv("POSTGRES_HOST", "postgres")
         pg_port = os.getenv("POSTGRES_PORT", "5432")
         
-        self.config["postgres_url"] = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+        self.config["postgres_url"] = self._ensure_asyncpg_url(
+            f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+        )
 
     def _resolve_hybrid_profile(self):
         """
@@ -103,7 +113,7 @@ class ConfigManager:
             
         self.config["qdrant_host"] = qdrant_host
         self.config["qdrant_api_key"] = qdrant_api_key
-        self.config["postgres_url"] = postgres_url
+        self.config["postgres_url"] = self._ensure_asyncpg_url(postgres_url)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieve a configuration value."""
@@ -123,6 +133,19 @@ class ConfigManager:
             "api_key": self.config["qdrant_api_key"]
         }
         
+    def _ensure_asyncpg_url(self, url: str) -> str:
+        """Normalize PostgreSQL URLs for asyncpg use."""
+        normalized_url = url.strip()
+        if normalized_url.startswith("postgresql+asyncpg://"):
+            return normalized_url
+        if normalized_url.startswith("postgresql+psycopg2://"):
+            return normalized_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+        if normalized_url.startswith("postgresql://"):
+            return normalized_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if normalized_url.startswith("postgres://"):
+            return normalized_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        return normalized_url
+
     def get_postgres_url(self) -> str:
         """Returns PostgreSQL connection string."""
         return self.config["postgres_url"]
@@ -132,5 +155,9 @@ class ConfigManager:
         return {
             "api_base": self.config["embedding_api_base"]
         }
+
+    def get_async_session(self) -> AsyncSession:
+        """Returns a new async database session."""
+        return AsyncSession(self._async_engine)
 
 config_manager = ConfigManager()

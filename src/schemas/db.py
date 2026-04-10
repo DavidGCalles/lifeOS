@@ -16,7 +16,10 @@ from src.schemas.memory import MemoryVisibility, MemoryDomainType
 # ==============================================================================
 class UserRole(str, PyEnum):
     ADMIN = "ADMIN"
-    USER = "USER"
+    FAMILY = "FAMILY"
+    EXTERNAL = "EXTERNAL"
+    PENDING = "PENDING"
+    BLOCKED = "BLOCKED"
     GUEST = "GUEST"
 
 class UserStatus(str, PyEnum):

@@ -16,7 +16,7 @@ from src.schemas.memory import (
     MemoryType,
     MemorySource,
 )
-from src.managers.identity_manager import IdentityManager
+from src.managers.postgres_identity_manager import PostgresIdentityManager as IdentityManager
 from src.system_status import SystemStatusManager
 
 
