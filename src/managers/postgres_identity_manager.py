@@ -9,6 +9,7 @@ import json
 from pydantic import BaseModel, Field
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from src.schemas.db import DBUser, DBTelegramIdentity, UserRole, UserStatus
 
 from src.managers.config_manager import config_manager
 
