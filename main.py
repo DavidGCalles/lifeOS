@@ -14,7 +14,7 @@ import asyncio
 
 from src.crew_orchestrator import CrewOrchestrator
 from src.memory_gateway import MemoryGateway
-from src.managers.postgres_identity_manager import PostgresIdentityManager as IdentityManager
+from src.managers.postgres_identity_manager import IdentityManager
 from src.schemas.db import UserRole, UserStatus
 from src.utils.tool_context import inject_runtime_context
 from src.logging_config import configure_logging, install_grpc_noise_filter

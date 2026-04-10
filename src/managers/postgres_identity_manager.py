@@ -2,15 +2,23 @@
 PostgresIdentityManager: Implementación de IdentityManager usando SQLModel y AsyncSession
 para PostgreSQL.
 '''
-import logging
 import json
+import logging
 from pydantic import BaseModel
-from sqlmodel import select
-from src.schemas.db import DBUser, DBTelegramIdentity, UserRole, UserStatus
+from typing import Any
 
 from src.managers.config_manager import config_manager
+from src.repositories.base_repository import BaseRepository, RepositoryError
+from src.repositories.identity_repository import IdentityRepository
+from src.schemas.db import (
+    DBUser,
+    DBTelegramIdentity,
+    UserRole,
+    UserStatus,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class UserContext(BaseModel):
     '''
@@ -30,261 +38,160 @@ class UserContext(BaseModel):
 
 
 class PostgresIdentityManager:
-    ''' Implementación de IdentityManager que resuelve usuarios desde PostgreSQL
-    usando SQLModel. '''
-    @classmethod
-    async def get_user(cls, telegram_id: int | str) -> UserContext:
-        ''' Resuelve un usuario a partir de su telegram_id,
-        con manejo robusto de errores y casos límite. '''
-        tid_str = str(telegram_id)
-        async with config_manager.get_async_session() as session:
+    ''' Implementación de IdentityManager que resuelve usuarios desde PostgreSQL.
+
+    Este manager delega completamente el acceso a datos a repositorios inyectados.
+    '''
+
+    def __init__(self, repository: IdentityRepository):
+        self._identity_repository = repository
+
+    def _build_user_context(self, db_user: DBUser, telegram_id: str) -> UserContext:
+        metadata = db_user.profile_metadata or {}
+        if not isinstance(metadata, dict):
             try:
-                stmt = (
-                    select(DBUser)
-                    .join(DBTelegramIdentity, DBUser.id == DBTelegramIdentity.user_id)
-                    .where(DBTelegramIdentity.telegram_id == int(telegram_id))
-                )
-                result = await session.execute(stmt)
-                db_user = result.scalar_one_or_none()
+                metadata = json.loads(metadata)
+            except json.JSONDecodeError:
+                logger.warning("⚠️ Failed to parse profile_metadata for user %s", db_user.id)
+                metadata = {}
 
-                # 2. Manejo de desconocido (Stranger)
-                if not db_user:
-                    logger.info("📭 No registered user found for telegram_id=%s", tid_str)
-                    return UserContext(
-                        telegram_id=tid_str,
-                        name="Stranger",
-                        role=UserRole.GUEST,
-                        status = UserStatus.PENDING,
-                        description="Unauthorized"
-                    )
+        return UserContext(
+            telegram_id=telegram_id,
+            name=db_user.name,
+            role=db_user.role,
+            status=db_user.status,
+            description=db_user.description,
+            calendar_id=metadata.get("calendar_id"),
+        )
 
-                # 3. Parseo defensivo del JSONB
-                # asyncpg devuelve dict nativo para JSONB, pero cubrimos la espalda.
-                metadata = db_user.profile_metadata or {}
-                if not isinstance(metadata, dict):
-                    try:
-                        metadata = json.loads(metadata)
-                    except json.JSONDecodeError:
-                        logger.warning("⚠️ Failed to parse profile_metadata for" \
-                        "user %s", db_user.id)
-                        metadata = {}
-
-                # 4. Retorno del Contexto Limpio
+    async def get_user(self, telegram_id: int | str) -> UserContext:
+        tid_str = str(telegram_id)
+        try:
+            db_user = await self._identity_repository.get_user_by_telegram_id(telegram_id)
+            if db_user is None:
+                logger.info("📭 No registered user found for telegram_id=%s", tid_str)
                 return UserContext(
                     telegram_id=tid_str,
-                    name=db_user.name,
-                    role=db_user.role,
-                    status=db_user.status,
-                    description=db_user.description,
-                    calendar_id=metadata.get("calendar_id")
-                )
-
-            except Exception as e:
-                logger.error("❌ Error resolving identity for telegram_id=%s: %s",
-                             tid_str, str(e), exc_info=True)
-                # Default-deny absoluto en caso de fallo de base de datos
-                return UserContext(
-                    telegram_id=tid_str,
-                    name="ErrorFallback",
+                    name="Stranger",
                     role=UserRole.GUEST,
                     status=UserStatus.PENDING,
-                    description="System Error during resolution"
+                    description="Unauthorized",
                 )
+            return self._build_user_context(db_user, tid_str)
+        except RepositoryError as error:
+            logger.error("❌ Error resolving identity for telegram_id=%s: %s", tid_str, str(error), exc_info=True)
+            return UserContext(
+                telegram_id=tid_str,
+                name="ErrorFallback",
+                role=UserRole.GUEST,
+                status=UserStatus.PENDING,
+                description="System Error during resolution",
+            )
 
-    @classmethod
-    async def register_user(cls, user: UserContext) -> bool:
-        """
-        Registra un usuario nuevo en PostgreSQL usando SQLModel.
-        """
-        async with config_manager.get_async_session() as session:
-            try:
-                # Check if user already exists
-                existing_stmt = (
-                    select(DBTelegramIdentity)
-                    .where(DBTelegramIdentity.telegram_id == int(user.telegram_id))
-                )
-                result = await session.exec(existing_stmt)
-                if result.scalar_one_or_none():
-                    logger.warning("User with telegram_id %s already exists", user.telegram_id)
-                    return False
+    async def register_user(self, user: UserContext) -> bool:
+        if await self._identity_repository.has_telegram_identity(user.telegram_id):
+            logger.warning("User with telegram_id %s already exists", user.telegram_id)
+            return False
 
-                # Create DBUser
-                db_user = DBUser(
-                    name=user.name,
-                    role=user.role,
-                    status=UserStatus.APPROVED,  # Assuming registration approves
-                    description=user.description,
-                    profile_metadata={"calendar_id": user.calendar_id} if user.calendar_id else {}
-                )
-                session.add(db_user)
-                await session.flush()  # To get the id
+        user_payload = {
+            "name": user.name,
+            "role": user.role,
+            "status": UserStatus.APPROVED,
+            "description": user.description,
+            "profile_metadata": {"calendar_id": user.calendar_id} if user.calendar_id else {},
+        }
 
-                # Create DBTelegramIdentity
-                telegram_identity = DBTelegramIdentity(
-                    telegram_id=int(user.telegram_id),
-                    user_id=db_user.id
-                )
-                session.add(telegram_identity)
+        try:
+            await self._identity_repository.create_user_with_identity(user_payload, user.telegram_id)
+            logger.info("✅ User registered successfully: id=%s", user.telegram_id)
+            return True
+        except RepositoryError as error:
+            logger.error("❌ Error registering user %s: %s", user.telegram_id, str(error), exc_info=True)
+            return False
 
-                await session.commit()
-                logger.info("✅ User registered successfully: id=%s", user.telegram_id)
-                return True
-            except Exception as e:
-                await session.rollback()
-                logger.error("❌ Error registering user %s: %s",
-                             user.telegram_id, str(e), exc_info=True)
-                return False
-
-    @classmethod
-    async def update_user(cls, telegram_id: int | str, data: dict) -> bool:
-        ''' Actualiza campos de un usuario existente. '''
+    async def update_user(self, telegram_id: int | str, data: dict[str, Any]) -> bool:
         tid_str = str(telegram_id)
-        logger.debug("🔄 User update initiated: telegram_id=%s fields=%s",
-                     tid_str, list(data.keys()))
-        async with config_manager.get_async_session() as session:
-            try:
-                # Find the user
-                stmt = (
-                    select(DBUser)
-                    .join(DBTelegramIdentity, DBUser.id == DBTelegramIdentity.user_id)
-                    .where(DBTelegramIdentity.telegram_id == int(telegram_id))
-                )
-                result = await session.exec(stmt)
-                db_user = result.scalar_one_or_none()
-                if not db_user:
-                    logger.warning("User not found for update: %s", tid_str)
-                    return False
+        updates: dict[str, Any] = {}
 
-                # Update fields
-                if 'name' in data:
-                    db_user.name = data['name']
-                if 'role' in data:
-                    db_user.role = UserRole(data['role'])
-                if 'description' in data:
-                    db_user.description = data['description']
-                if 'calendar_id' in data:
-                    metadata = db_user.profile_metadata or {}
-                    metadata['calendar_id'] = data['calendar_id']
-                    db_user.profile_metadata = metadata
+        if "name" in data:
+            updates["name"] = data["name"]
+        if "role" in data:
+            updates["role"] = UserRole(data["role"])
+        if "description" in data:
+            updates["description"] = data["description"]
+        if "calendar_id" in data:
+            updates["profile_metadata"] = {"calendar_id": data["calendar_id"]}
 
-                await session.commit()
-                logger.info("✅ User updated successfully: id=%s", tid_str)
-                return True
-            except Exception as e:
-                await session.rollback()
-                logger.error("❌ Error updating user %s: %s", tid_str, str(e), exc_info=True)
+        if not updates:
+            logger.info("No updatable fields provided for telegram_id=%s", tid_str)
+            return False
+
+        try:
+            updated_user = await self._identity_repository.update_user_by_telegram_id(telegram_id, updates)
+            if updated_user is None:
+                logger.warning("User not found for update: %s", tid_str)
                 return False
+            logger.info("✅ User updated successfully: id=%s", tid_str)
+            return True
+        except RepositoryError as error:
+            logger.error("❌ Error updating user %s: %s", tid_str, str(error), exc_info=True)
+            return False
 
-    @classmethod
-    async def get_user_by_name(cls, name: str) -> UserContext | None:
-        """
-        Intenta encontrar un UserContext por nombre.
-        """
-        logger.debug("🔍 User lookup by name: name='%s'", name)
-        async with config_manager.get_async_session() as session:
-            try:
-                stmt = select(DBUser).where(DBUser.name.ilike(name))
-                result = await session.exec(stmt)
-                db_user = result.first()
-                if not db_user:
-                    logger.info("No user found for name '%s'", name)
-                    return None
-
-                # Get telegram_id
-                telegram_stmt = select(DBTelegramIdentity).where(
-                    DBTelegramIdentity.user_id == db_user.id)
-                telegram_result = await session.exec(telegram_stmt)
-                telegram_identity = telegram_result.first()
-                if not telegram_identity:
-                    logger.warning("User %s has no telegram identity", db_user.id)
-                    return None
-
-                metadata = db_user.profile_metadata or {}
-                return UserContext(
-                    telegram_id=str(telegram_identity.telegram_id),
-                    name=db_user.name,
-                    role=db_user.role,
-                    status=db_user.status,
-                    description=db_user.description,
-                    calendar_id=metadata.get("calendar_id")
-                )
-            except Exception as e:
-                logger.error("Error searching user by name '%s': %s", name, str(e))
+    async def get_user_by_name(self, name: str) -> UserContext | None:
+        try:
+            db_user = await self._identity_repository.get_user_by_name(name)
+            if db_user is None:
+                logger.info("No user found for name '%s'", name)
                 return None
 
-    @classmethod
-    async def get_user_by_email(cls, email: str) -> UserContext | None:
-        """
-        Search for a user by their calendar_id (email).
-        """
-        normalized_email = email.strip().lower()
-        logger.debug("🔍 User lookup by email: email='%s'", normalized_email)
-
-        async with config_manager.get_async_session() as session:
-            try:
-                # Search in profile_metadata for calendar_id
-                stmt = select(DBUser).where(DBUser.profile_metadata.contains(
-                    {"calendar_id": normalized_email}))
-                result = await session.exec(stmt)
-                db_user = result.first()
-                if not db_user:
-                    logger.info("No user found for email '%s'", normalized_email)
-                    return None
-
-                # Get telegram_id
-                telegram_stmt = select(DBTelegramIdentity).where(
-                    DBTelegramIdentity.user_id == db_user.id)
-                telegram_result = await session.exec(telegram_stmt)
-                telegram_identity = telegram_result.first()
-                if not telegram_identity:
-                    logger.warning("User %s has no telegram identity", db_user.id)
-                    return None
-
-                metadata = db_user.profile_metadata or {}
-                return UserContext(
-                    telegram_id=str(telegram_identity.telegram_id),
-                    name=db_user.name,
-                    role=db_user.role,
-                    status=db_user.status,
-                    description=db_user.description,
-                    calendar_id=metadata.get("calendar_id")
-                )
-            except Exception as e:
-                logger.error("Error searching user by email '%s': %s", normalized_email, str(e))
+            telegram_identity = await self._identity_repository.get_telegram_identity_by_user_id(db_user.id)
+            if not telegram_identity:
+                logger.warning("User %s has no telegram identity", db_user.id)
                 return None
 
-    @classmethod
-    async def get_users_by_role(cls, role: UserRole) -> list[UserContext]:
-        """
-        Retrieves all users with a specific role.
-        """
-        logger.debug("🔍 User lookup by role: role='%s'", role)
-        users = []
-        async with config_manager.get_async_session() as session:
-            try:
-                stmt = select(DBUser).where(DBUser.role == role)
-                result = await session.exec(stmt)
-                db_users = result.all()
-                for db_user in db_users:
-                    # Get telegram_id
-                    telegram_stmt = select(DBTelegramIdentity).where(
-                        DBTelegramIdentity.user_id == db_user.id)
-                    telegram_result = await session.exec(telegram_stmt)
-                    telegram_identity = telegram_result.first()
-                    
-                    if telegram_identity:
-                        metadata = db_user.profile_metadata or {}
-                        users.append(UserContext(
-                            telegram_id=str(telegram_identity.telegram_id),
-                            name=db_user.name,
-                            role=db_user.role,
-                            status=db_user.status,
-                            description=db_user.description,
-                            calendar_id=metadata.get("calendar_id")
-                        ))
-                
-                logger.info("Found %d users with role '%s'", len(users), role)
-                return users
-            except Exception as e:
-                logger.error("Error searching users by role '%s': %s", role, str(e))
-                return []
+            return self._build_user_context(db_user, str(telegram_identity.telegram_id))
+        except RepositoryError as error:
+            logger.error("Error searching user by name '%s': %s", name, str(error), exc_info=True)
+            return None
+
+    async def get_user_by_email(self, email: str) -> UserContext | None:
+        try:
+            db_user = await self._identity_repository.get_user_by_email(email)
+            if db_user is None:
+                logger.info("No user found for email '%s'", email)
+                return None
+
+            telegram_identity = await self._identity_repository.get_telegram_identity_by_user_id(db_user.id)
+            if not telegram_identity:
+                logger.warning("User %s has no telegram identity", db_user.id)
+                return None
+
+            return self._build_user_context(db_user, str(telegram_identity.telegram_id))
+        except RepositoryError as error:
+            logger.error("Error searching user by email '%s': %s", email, str(error), exc_info=True)
+            return None
+
+    async def get_users_by_role(self, role: UserRole) -> list[UserContext]:
+        try:
+            db_users = await self._identity_repository.get_users_by_role(role)
+            users: list[UserContext] = []
+            for db_user in db_users:
+                telegram_identity = await self._identity_repository.get_telegram_identity_by_user_id(db_user.id)
+                if not telegram_identity:
+                    continue
+                users.append(self._build_user_context(db_user, str(telegram_identity.telegram_id)))
+            logger.info("Found %d users with role '%s'", len(users), role)
+            return users
+        except RepositoryError as error:
+            logger.error("Error searching users by role '%s': %s", role, str(error), exc_info=True)
+            return []
+
+
+# Default instance for application wiring.
+user_repository = BaseRepository(DBUser, config_manager.get_async_session)
+telegram_repository = BaseRepository(DBTelegramIdentity, config_manager.get_async_session)
+identity_repository = IdentityRepository(user_repository, telegram_repository)
+identity_manager = PostgresIdentityManager(identity_repository)
+
+# Convenience export for legacy import patterns.
+IdentityManager = identity_manager
