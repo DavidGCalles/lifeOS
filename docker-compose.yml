@@ -1,0 +1,40 @@
+# LifeOS v3 — edge compose (v3-FR-01)
+# Substrate = coreAI via submodule (./coreAI, ver scripts/bootstrap.sh) + include.
+# CERO GCP: sin Cloud Build/Run/Scheduler/Firestore; todo on-prem.
+# Con include (Compose v2.20+), los paths relativos del archivo incluido se
+# resuelven dentro de coreAI/ (su propio project directory):
+#   volumes -> coreAI/data/..., env_file -> coreAI/.env, build context -> coreAI/
+name: lifeos-edge
+
+include:
+  - coreAI/docker-compose.yml
+
+services:
+  # Healthchecks que coreAI no define para estos servicios; se añaden aqui
+  # (override del edge, coreAI no se toca).
+  qdrant:
+    healthcheck:
+      # la imagen qdrant no trae curl/wget; bash si, y /dev/tcp es builtin
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  litellm:
+    healthcheck:
+      # gateway LLM: /health responde sin API key
+      test: ["CMD-SHELL", "python -c "import urllib.request as u; u.urlopen('http://localhost:4000/health', timeout=5)""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  worker-node:
+    healthcheck:
+      # sin HTTP: el proceso vivo es el check (solo python + /proc, sin ps/pgrep en slim)
+      test: ["CMD-SHELL", "python -c "import os,sys; ok=any('src.worker' in open('/proc/'+p+'/cmdline','rb').read().decode(errors='ignore') for p in os.listdir('/proc') if p.isdigit()); sys.exit(0 if ok else 1)""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
