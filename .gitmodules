@@ -1,0 +1,3 @@
+[submodule "coreAI"]
+	path = coreAI
+	url = https://github.com/DavidGCalles/coreAI.git
