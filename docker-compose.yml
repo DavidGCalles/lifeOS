@@ -23,8 +23,10 @@ services:
 
   litellm:
     healthcheck:
-      # gateway LLM: /health responde sin API key
-      test: ["CMD-SHELL", "python -c "import urllib.request as u; u.urlopen('http://localhost:4000/health', timeout=5)""]
+      # gateway LLM: probe ligero /health/liveliness (sin auth, sin llamadas a
+      # modelos). /health es diagnostico de admin: testea cada modelo y puede
+      # pedir API key — falso unhealthy garantizado en el edge.
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:4000/health/liveliness', timeout=5)\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -33,7 +35,7 @@ services:
   worker-node:
     healthcheck:
       # sin HTTP: el proceso vivo es el check (solo python + /proc, sin ps/pgrep en slim)
-      test: ["CMD-SHELL", "python -c "import os,sys; ok=any('src.worker' in open('/proc/'+p+'/cmdline','rb').read().decode(errors='ignore') for p in os.listdir('/proc') if p.isdigit()); sys.exit(0 if ok else 1)""]
+      test: ["CMD-SHELL", "python -c \"import os,sys; ok=any('src.worker' in open('/proc/'+p+'/cmdline','rb').read().decode(errors='ignore') for p in os.listdir('/proc') if p.isdigit()); sys.exit(0 if ok else 1)\""]
       interval: 15s
       timeout: 5s
       retries: 5
