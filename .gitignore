@@ -1,0 +1,11 @@
+# secretos
+.env
+coreAI/.env
+
+# datos del substrate (viven dentro del submodule, paths relativos del include)
+coreAI/data/
+data/
+
+# python
+__pycache__/
+*.pyc
