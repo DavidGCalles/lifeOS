@@ -22,6 +22,17 @@ class PollingTransport:
         self._offset: int | None = None
 
     async def updates(self):
+        # Limpieza de arranque: un setWebhook residuo (el legacy corría en
+        # webhook sobre Cloud Run) rompe getUpdates con 409. v3 no usa
+        # webhooks por diseño: borrar el residuo es siempre seguro.
+        try:
+            await self._client.delete_webhook()
+            log.info("deleteWebhook ok (residuo legacy limpiado si lo había)")
+        except TelegramError as e:
+            log.warning(
+                "deleteWebhook falló (%s); sigo: si hay webhook activo, "
+                "getUpdates lo dirá con 409", e,
+            )
         while True:
             try:
                 batch = await self._client.get_updates(self._offset, self._timeout)

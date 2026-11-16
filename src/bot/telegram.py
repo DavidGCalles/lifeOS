@@ -45,5 +45,13 @@ class TelegramClient:
             await asyncio.sleep(5)
             return []
 
+    async def delete_webhook(self) -> None:
+        """Limpia el residuo de un setWebhook (legacy): mientras exista,
+        getUpdates devuelve 409 Conflict. Idempotente: si no había
+        webhook, Telegram responde ok y no pasa nada. No se descartan los
+        updates pendientes — no perder mensajes enviados mientras el bot
+        estaba caído importa más que el ruido de contestarlos."""
+        await self._call("deleteWebhook", {})
+
     async def send_message(self, chat_id: int, text: str) -> None:
         await self._call("sendMessage", {"chat_id": chat_id, "text": text})
