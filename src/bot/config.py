@@ -11,6 +11,7 @@ class Settings:
     litellm_base_url: str
     litellm_model: str
     llm_timeout: float
+    llm_max_tokens: int
     poll_timeout: int
     window_size: int
 
@@ -37,6 +38,9 @@ def load_settings() -> Settings:
         # 300 s por defecto: un LLM local en LAN puede tardar >120 s
         # (recarga JIT del modelo tras idle) y no hay que matarle la llamada
         llm_timeout=float(os.environ.get("LLM_TIMEOUT_S", "300")),
+        # cota de generación: sin max_tokens, una generación sin stop
+        # puede durar minutos (E2E 16 nov: ReadTimeout a los 300 s)
+        llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", "1024")),
         poll_timeout=int(os.environ.get("POLL_TIMEOUT", "50")),
         window_size=int(os.environ.get("WINDOW_SIZE", "5")),
     )

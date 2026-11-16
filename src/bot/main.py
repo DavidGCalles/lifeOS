@@ -37,6 +37,7 @@ telegram = TelegramClient(settings.telegram_token)
 llm = GatewayLLM(
     settings.litellm_base_url, settings.litellm_model,
     timeout=settings.llm_timeout,
+    max_tokens=settings.llm_max_tokens,
 )
 transport = PollingTransport(telegram, settings.poll_timeout)
 
@@ -85,9 +86,11 @@ async def handle(update: dict) -> None:
 
 async def bot_loop() -> None:
     log.info(
-        "edge-bot arriba: persona=%r usuario=%r modelo=%r ventana=%d timeout_llm=%.0fs",
+        "edge-bot arriba: persona=%r usuario=%r modelo=%r ventana=%d "
+        "timeout_llm=%.0fs max_tokens=%d",
         persona.get("role"), settings.current_user,
-        settings.litellm_model, settings.window_size, settings.llm_timeout,
+        settings.litellm_model, settings.window_size,
+        settings.llm_timeout, settings.llm_max_tokens,
     )
     try:
         async for update in transport.updates():

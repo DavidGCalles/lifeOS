@@ -13,10 +13,11 @@ class LLMError(RuntimeError):
 
 
 class GatewayLLM:
-    def __init__(self, base_url: str, model: str, timeout: float = 300.0):
+    def __init__(self, base_url: str, model: str, timeout: float = 300.0,
+                 max_tokens: int = 1024):
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._model = model
-        self._timeout = timeout
+        self._max_tokens = max_tokens
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=5.0)
         )
@@ -26,12 +27,16 @@ class GatewayLLM:
 
     async def chat(self, messages: list[dict]) -> str:
         t0 = time.monotonic()
+        body = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": 0.4,
+            # cota de generación: sin max_tokens una generación sin stop
+            # puede durar minutos y el cliente se come el timeout entero
+            "max_tokens": self._max_tokens,
+        }
         try:
-            resp = await self._client.post(
-                self._url,
-                json={"model": self._model, "messages": messages,
-                      "temperature": 0.4},
-            )
+            resp = await self._client.post(self._url, json=body)
             resp.raise_for_status()
             data = resp.json()
             content = data["choices"][0]["message"]["content"].strip()
