@@ -14,6 +14,24 @@ como substrate via submodule + include. Cero GCP, todo on-prem.
 5. `docker compose ps` — healthchecks en verde: memoria (postgres/qdrant),
    gateway LLM (litellm), worker (worker-node) y edge-bot
 
+## Rebuild rápido del edge-bot (léelo ANTES de cualquier `--build`)
+
+Con `include`, coreAI y el edge son UN solo proyecto: `docker compose up -d
+--build <servicio>` aplica el build a TODO lo que el comando arranca,
+dependencias incluidas (`edge-bot → litellm → infinity`). El build de
+Infinity (copia de los kits de modelos al contexto de build) es el más caro
+del stack y NO siempre sale de caché: un `--build` descuidado son ~10
+minutos de build que no necesitas para tocar el bot.
+
+- Primera puesta en marcha: `docker compose up -d` — builda las imágenes
+  que falten (una sola vez).
+- Iterar sobre código del edge: `docker compose build edge-bot` y luego
+  `docker compose up -d --no-deps edge-bot`.
+- Levantar solo el bot: `docker compose up -d edge-bot` (las dependencias ya
+  corriendo no se tocan).
+- A pelo, `docker compose up -d --build` (sin servicio) solo si de verdad
+  toca rebuild de todo el stack.
+
 ## v3-FR-02a: loop del bot E2E (edge-bot)
 
 Telegram 1:1 → Jane (persona por defecto, `personas/agents.yaml`) → LLM vía
