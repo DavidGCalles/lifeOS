@@ -10,6 +10,7 @@ class Settings:
     allowed_chats: frozenset[int]
     litellm_base_url: str
     litellm_model: str
+    llm_timeout: float
     poll_timeout: int
     window_size: int
 
@@ -33,6 +34,9 @@ def load_settings() -> Settings:
             "LITELLM_BASE_URL", "http://litellm:4000/v1"
         ),
         litellm_model=os.environ.get("LITELLM_MODEL", "local-fallback"),
+        # 300 s por defecto: un LLM local en LAN puede tardar >120 s
+        # (recarga JIT del modelo tras idle) y no hay que matarle la llamada
+        llm_timeout=float(os.environ.get("LLM_TIMEOUT_S", "300")),
         poll_timeout=int(os.environ.get("POLL_TIMEOUT", "50")),
         window_size=int(os.environ.get("WINDOW_SIZE", "5")),
     )

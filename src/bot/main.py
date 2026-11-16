@@ -34,7 +34,10 @@ system_prompt = render_system_prompt(persona, settings.current_user)
 # módulos aislados y swapeables: memoria efímera (FR-02b la sustituirá)
 memory = EphemeralMemory(settings.window_size)
 telegram = TelegramClient(settings.telegram_token)
-llm = GatewayLLM(settings.litellm_base_url, settings.litellm_model)
+llm = GatewayLLM(
+    settings.litellm_base_url, settings.litellm_model,
+    timeout=settings.llm_timeout,
+)
 transport = PollingTransport(telegram, settings.poll_timeout)
 
 
@@ -82,9 +85,9 @@ async def handle(update: dict) -> None:
 
 async def bot_loop() -> None:
     log.info(
-        "edge-bot arriba: persona=%r usuario=%r modelo=%r ventana=%d",
+        "edge-bot arriba: persona=%r usuario=%r modelo=%r ventana=%d timeout_llm=%.0fs",
         persona.get("role"), settings.current_user,
-        settings.litellm_model, settings.window_size,
+        settings.litellm_model, settings.window_size, settings.llm_timeout,
     )
     try:
         async for update in transport.updates():
