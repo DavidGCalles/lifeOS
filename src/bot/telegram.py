@@ -6,6 +6,11 @@ import httpx
 
 log = logging.getLogger("edge-bot.telegram")
 
+# Límite duro de Telegram para sendMessage: >4096 caracteres es 400
+# "message is too long" (E2E 16 nov: una respuesta con finish='length'
+# de 1024 tokens superó el límite y el 400 sin capturar mató el loop)
+MAX_MESSAGE_LEN = 4096
+
 
 class TelegramError(RuntimeError):
     pass
@@ -54,4 +59,11 @@ class TelegramClient:
         await self._call("deleteWebhook", {})
 
     async def send_message(self, chat_id: int, text: str) -> None:
-        await self._call("sendMessage", {"chat_id": chat_id, "text": text})
+        """Envía troceando: una respuesta larga (finish='length' contra el
+        techo de max_tokens) llega como varios mensajes consecutivos en
+        vez de rebotar con 400 y perder la entrega completa."""
+        for i in range(0, len(text), MAX_MESSAGE_LEN):
+            await self._call(
+                "sendMessage",
+                {"chat_id": chat_id, "text": text[i:i + MAX_MESSAGE_LEN]},
+            )

@@ -16,13 +16,19 @@ from .config import load_settings
 from .ephemeral_memory import EphemeralMemory
 from .llm import GatewayLLM, LLMError
 from .personas import default_persona, load_personas, render_system_prompt
-from .telegram import TelegramClient
+from .telegram import TelegramClient, TelegramError
 from .transport import PollingTransport
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
+# httpx loguea a INFO la URL completa de CADA petición, y la URL del bot de
+# Telegram lleva el token en claro: log pegado = token quemado (E2E 16 nov:
+# el token salió en cada línea de httpx). Sus líneas INFO no aportan nada
+# que no logueemos ya por nuestra cuenta: a WARNING solo salen los errores,
+# y el token desaparece del log.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("edge-bot")
 
 # fail-fast en el arranque: sin token no hay bot
@@ -77,10 +83,26 @@ async def handle(update: dict) -> None:
         )
         return
 
+    if not reply:
+        # finish degenerado puede devolver contenido vacío: sin turno en
+        # memoria (no hubo respuesta real) y el usuario sabe qué pasó
+        log.warning("task=%s respuesta vacía del LLM, turno no registrado", task)
+        await telegram.send_message(
+            chat_id,
+            "El motor ha devuelto una respuesta vacía. Vuelve a intentarlo.",
+        )
+        return
+
     # la ventana solo registra turnos completos: si el LLM falla, nada
     memory.append(chat_id, {"role": "user", "content": text})
     memory.append(chat_id, {"role": "assistant", "content": reply})
-    await telegram.send_message(chat_id, reply)
+    try:
+        await telegram.send_message(chat_id, reply)
+    except TelegramError as e:
+        # el turno queda en memoria (la conversación siguió su curso
+        # aunque la entrega fallara): un fallo de envío no mata el loop
+        log.error("task=%s fallo al enviar a Telegram: %s", task, e)
+        return
     log.info("task=%s out ok reply=%r", task, reply[:120])
 
 
@@ -94,7 +116,15 @@ async def bot_loop() -> None:
     )
     try:
         async for update in transport.updates():
-            await handle(update)
+            # INVULNERABLE A NIVEL DE UPDATE: el E2E 16 nov lo mató un 400
+            # de sendMessage (mensaje >4096 chars) sin capturar — el bot
+            # quedaba mudo con healthcheck verde. Ninguna excepción de una
+            # update puede tumbar el loop: se loguea y se sigue con la
+            # siguiente.
+            try:
+                await handle(update)
+            except Exception:
+                log.exception("update con excepción no capturada; el loop sigue")
     finally:
         await telegram.close()
         await llm.close()
