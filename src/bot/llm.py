@@ -37,13 +37,28 @@ class GatewayLLM:
         }
         try:
             resp = await self._client.post(self._url, json=body)
-            resp.raise_for_status()
+            # EL CUERPO DEL ERROR ES EL DIAGNÓSTICO: litellm/LM Studio dicen
+            # ahí la razón literal del rechazo. raise_for_status solo dice
+            # "400" y tira el cuerpo a la basura (dos ciegos comprados).
+            if resp.status_code >= 400:
+                raise LLMError(
+                    f"gateway {self._model} tras {time.monotonic() - t0:.1f} s: "
+                    f"HTTP {resp.status_code}: {resp.text[:500]}"
+                )
             data = resp.json()
-            content = data["choices"][0]["message"]["content"].strip()
-            # duración siempre: la latencia del loop la pone el LLM, y así
-            # la vemos sin cronómetro (ReadTimeout str vacío no nos tapa nada)
-            log.info("llm %s ok en %.1f s", self._model, time.monotonic() - t0)
+            choice = data["choices"][0]
+            content = (choice.get("message") or {}).get("content", "").strip()
+            usage = data.get("usage") or {}
+            # finish_reason y tokens de salida: si Jane vuelve a salir
+            # decapitada ("stop" degenerado vs "length"), aquí se ve
+            log.info(
+                "llm %s ok en %.1f s finish=%r tokens_out=%s",
+                self._model, time.monotonic() - t0,
+                choice.get("finish_reason"), usage.get("completion_tokens"),
+            )
             return content
+        except LLMError:
+            raise
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as e:
             # type(e).__name__ SIEMPRE: ReadTimeout/ConnectTimeout serializan
             # a string vacío y el error quedaba mudito ("fallo LLM: ...: ")
