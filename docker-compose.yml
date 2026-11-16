@@ -40,3 +40,48 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # ==========================================================
+  # SERVICIOS PROPIOS DEL EDGE
+  # ==========================================================
+
+  edge-bot:
+    # v3-FR-02a (#168): loop del bot — Telegram 1:1 → persona por defecto
+    # (Jane, personas/agents.yaml) → LLM vía gateway de coreAI (litellm,
+    # modelo local-fallback) → respuesta al chat. Sin tools, sin memoria
+    # persistente: sin volúmenes, la ventana de mensajes vive en RAM.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lifeos/edge-bot:local
+    container_name: lifeos_edge_bot
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        # required: false → el stack de v3-FR-01 sigue arrancando sin .env;
+        # el edge-bot hace fail-fast con mensaje claro si falta el token.
+        required: false
+    environment:
+      LITELLM_BASE_URL: http://litellm:4000/v1
+    depends_on:
+      litellm:
+        # gating honesto: el gateway espera a Infinity (start_period 10m en
+        # coreAI); el bot no arranca antes de poder servir chat de verdad.
+        condition: service_healthy
+    networks:
+      - coreai_backend
+    healthcheck:
+      # mismo patrón verificado que litellm/infinity (python urllib, sin curl)
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://localhost:8080/health', timeout=5)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      # mismo patrón Loki del stack (driver-side: la URL la resuelve el daemon
+      # del host, donde Loki escucha en 127.0.0.1:3100)
+      driver: loki
+      options:
+        loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+        mode: non-blocking
+        loki-retries: "3"
