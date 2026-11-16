@@ -49,6 +49,23 @@ class GatewayLLM:
             choice = data["choices"][0]
             content = (choice.get("message") or {}).get("content", "").strip()
             usage = data.get("usage") or {}
+            if not content:
+                # DIAGNÓSTICO de la respuesta vacía (E2E 16 nov, dos
+                # casos con la misma firma: finish='length' tokens_out=1024
+                # y content vacío). ¿Se fue el texto a reasoning_content
+                # (modelo de razonamiento que se gasta el techo pensando)
+                # o fue un loop degenerado de whitespace? El choice crudo
+                # lo dice. Solo se loguea en el caso vacío: cero ruido
+                # en el flujo normal.
+                msg = choice.get("message") or {}
+                log.warning(
+                    "contenido vacío: finish=%r content=%r reasoning=%r "
+                    "msg_keys=%s usage=%s",
+                    choice.get("finish_reason"),
+                    (msg.get("content") or "")[:300],
+                    (msg.get("reasoning_content") or "")[:300],
+                    sorted(msg.keys()), usage,
+                )
             # finish_reason y tokens de salida: si Jane vuelve a salir
             # decapitada ("stop" degenerado vs "length"), aquí se ve
             log.info(
