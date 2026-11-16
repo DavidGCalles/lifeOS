@@ -3,14 +3,55 @@
 Rama de rework greenfield (EPIC #156). Este repo es el EDGE: consume coreAI
 como substrate via submodule + include. Cero GCP, todo on-prem.
 
-## Arranque (v3-FR-01)
+## Arranque (v3-FR-01 + v3-FR-02a)
 
 1. `scripts/bootstrap.sh` — materializa el submodule `coreAI/`
 2. `cp coreAI/.envExample coreAI/.env` — edita `LOCAL_LLM_API_BASE` y passwords
-3. `docker compose up -d` — levanta edge + coreAI (postgres, qdrant, litellm,
-   infinity, core-mcp, worker-node, observabilidad)
-4. `docker compose ps` — healthchecks en verde: memoria (postgres/qdrant),
-   gateway LLM (litellm) y worker (worker-node)
+3. `cp .env.example .env` — pon `TELEGRAM_BOT_TOKEN` (de @BotFather) y, si
+   quieres, `ALLOWED_CHAT_ID` (whitelist de chats 1:1)
+4. `docker compose up -d` — levanta edge + coreAI (postgres, qdrant, litellm,
+   infinity, core-mcp, worker-node, observabilidad) **+ edge-bot**
+5. `docker compose ps` — healthchecks en verde: memoria (postgres/qdrant),
+   gateway LLM (litellm), worker (worker-node) y edge-bot
+
+## Rebuild rápido del edge-bot (léelo ANTES de cualquier `--build`)
+
+Con `include`, coreAI y el edge son UN solo proyecto: `docker compose up -d
+--build <servicio>` aplica el build a TODO lo que el comando arranca,
+dependencias incluidas (`edge-bot → litellm → infinity`). El build de
+Infinity (copia de los kits de modelos al contexto de build) es el más caro
+del stack y NO siempre sale de caché: un `--build` descuidado son ~10
+minutos de build que no necesitas para tocar el bot.
+
+- Primera puesta en marcha: `docker compose up -d` — builda las imágenes
+  que falten (una sola vez).
+- Iterar sobre código del edge: `docker compose build edge-bot` y luego
+  `docker compose up -d --no-deps edge-bot`.
+- Levantar solo el bot: `docker compose up -d edge-bot` (las dependencias ya
+  corriendo no se tocan).
+- A pelo, `docker compose up -d --build` (sin servicio) solo si de verdad
+  toca rebuild de todo el stack.
+
+## v3-FR-02a: loop del bot E2E (edge-bot)
+
+Telegram 1:1 → Jane (persona por defecto, `personas/agents.yaml`) → LLM vía
+gateway de coreAI (litellm, modelo `local-fallback`) → respuesta al chat.
+
+- **Transporte:** long polling tras una interfaz (`src/bot/transport/`). Con
+  `timeout=50` Telegram responde en cuanto llega el update; un webhook futuro
+  sería otro módulo del mismo contrato (exige URL pública, fuera de on-prem).
+- **Memoria efímera:** rolling window de los últimos 5 mensajes por chat, en
+  RAM (`src/bot/ephemeral_memory.py`), módulo aislado y swapeable cuando
+  llegue la memoria vía dispatch (v3-FR-02b). **El edge no persiste nada
+  propio**: sin volúmenes ni DB.
+- **Nota de arranque:** `edge-bot` espera a que `litellm` esté healthy, y el
+  gateway a su vez espera a Infinity (la carga de kits tarda minutos la
+  primera vez). No es un cuelgue: es gating.
+
+### DoD de v3-FR-02a
+
+- [ ] Escribir por Telegram 1:1 y recibir respuesta coherente de la persona por defecto
+- [ ] El edge no persiste nada propio (sin memoria; como mucho estado de sesión efímero)
 
 ## DoD de v3-FR-01
 
@@ -25,3 +66,6 @@ como substrate via submodule + include. Cero GCP, todo on-prem.
   via `include`.
 - Los healthchecks de qdrant/litellm/worker los define el compose del edge
   como override; coreAI no se modifica.
+- `edge-bot` es el primer servicio propio del edge: build local
+  (`Dockerfile`), sin puertos publicados (solo llamadas salientes a Telegram
+  y al gateway), logs a Loki con task-UUID por update.
