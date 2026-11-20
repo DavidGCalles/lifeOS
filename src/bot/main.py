@@ -29,7 +29,7 @@ from .transport import PollingTransport
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%asctime%s %name%s %levelname%s %message%s",
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
 # httpx loguea a INFO la URL completa de CADA petición, y la URL del bot de
 # Telegram lleva el token en claro: log pegado = token quemado (E2E 16 nov:
@@ -212,6 +212,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LifeOS edge-bot", lifespan=lifespan)
+
 
 @app.get("/health")
 async def health() -> dict:

@@ -7,8 +7,10 @@ import httpx
 
 log = logging.getLogger("edge-bot.llm")
 
+
 class LLMError(RuntimeError):
     pass
+
 
 class GatewayLLM:
     def __init__(self, base_url: str, model: str, timeout: float = 300.0,

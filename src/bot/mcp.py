@@ -23,14 +23,17 @@ from mcp.client.streamable_http import streamable_http_client
 
 log = logging.getLogger("edge-bot.mcp")
 
+
 class SubstrateError(RuntimeError):
     """Fallo hablando con core-mcp: transporte caído, isError del substrato
     o respuesta con forma inesperada. El loop del bot NO muere por esto:
     la tool la traduce en un aviso de Jane, no en excepción."""
 
+
 def _is_error(result) -> bool:
     """Atributo de error snake/camel-agnóstico (línea v2 del SDK)."""
     return bool(getattr(result, "is_error", getattr(result, "isError", False)))
+
 
 def _join_text(result) -> str:
     """Concatena los bloques de texto del resultado (frontera del substrato:
@@ -41,6 +44,7 @@ def _join_text(result) -> str:
         if text:
             parts.append(text)
     return "\n".join(parts)
+
 
 class CoreMCPClient:
     """Canal del edge hacia core-mcp. Una instancia, muchas llamadas

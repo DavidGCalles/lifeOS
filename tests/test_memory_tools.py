@@ -20,9 +20,11 @@ from src.bot.memory_tools import EDGE_TOOLS, MemoryTools
 DISPATCH = {"task_id": "7f1b2c3d-0000-4000-8000-000000000001",
             "session_id": "sess-1", "status": "PENDING"}
 
+
 def _memory_tools(client=None):
     client = client or AsyncMock()
     return MemoryTools(client, project="lifeos"), client
+
 
 def _call(name, arguments) -> dict:
     return {
@@ -31,18 +33,22 @@ def _call(name, arguments) -> dict:
         "function": {"name": name, "arguments": json.dumps(arguments)},
     }
 
+
 # --- superficie de borde ------------------------------------------------
+
 def test_superficie_exacta_dos_tools():
     """La persona ve EXACTAMENTE memory_save y memory_recall: nada del
     catálogo del substrato (6 tools, admin de DLQ incluido) se filtra."""
     names = {t["function"]["name"] for t in EDGE_TOOLS}
     assert names == {"memory_save", "memory_recall"}
 
+
 def test_schemas_declaran_argumento_y_closed_properties():
     for tool in EDGE_TOOLS:
         schema = tool["function"]["parameters"]
         assert schema["additionalProperties"] is False
         assert len(schema["required"]) == 1
+
 
 # --- memory_save → coreai_dispatch_task --------------------------------
 
@@ -63,6 +69,7 @@ async def test_save_traduce_a_dispatch_vectorize_event():
         "t1",
     )
 
+
 @pytest.mark.asyncio
 async def test_save_arg_extra_del_modelo_nunca_llega_al_substrato():
     """VECTORIZE_EVENT es extra=forbid: el modelo puede alucinar tantos
@@ -77,6 +84,7 @@ async def test_save_arg_extra_del_modelo_nunca_llega_al_substrato():
     _name, args, _task = client.call.await_args.args
     assert set(args["task_payload"].keys()) == {"content", "project"}
 
+
 @pytest.mark.asyncio
 async def test_save_texto_vacio_no_abre_canal():
     mt, client = _memory_tools()
@@ -84,11 +92,14 @@ async def test_save_texto_vacio_no_abre_canal():
     assert ok is False
     client.call.assert_not_awaited()
 
+
 # --- memory_recall → coreai_search_context ------------------------------
+
 def _hit(content="El jueves hay que llamar a Natalia", score=0.92):
     return {"point_id": "9c8b7a6d-0000-4000-8000-000000000002",
             "domain": "system", "score": score, "content": content,
             "session_id": None, "project": "lifeos"}
+
 
 @pytest.mark.asyncio
 async def test_recall_traduce_a_search_y_formatea_hits():
@@ -106,6 +117,7 @@ async def test_recall_traduce_a_search_y_formatea_hits():
         "t2",
     )
 
+
 @pytest.mark.asyncio
 async def test_recall_sin_hits_es_no_match_honesto_no_fallo():
     """Lista vacía = la memoria no miente con resultados flojos (umbral del
@@ -118,6 +130,7 @@ async def test_recall_sin_hits_es_no_match_honesto_no_fallo():
     assert ok is True
     assert "Sin resultados" in text
     assert "NO inventes" in text
+
 
 # --- fallos: NINGÚN path lanza, el loop es inmortal ---------------------
 
@@ -134,6 +147,7 @@ async def test_fallo_de_substrato_se_devuelve_como_tool_error():
     assert "core-mcp caído" in text
     assert "reintentar" in text
 
+
 @pytest.mark.asyncio
 async def test_respuesta_de_dispatch_malformada_es_falso():
     client = AsyncMock()
@@ -145,6 +159,7 @@ async def test_respuesta_de_dispatch_malformada_es_falso():
     assert ok is False
     assert "forma inesperada" in text
 
+
 @pytest.mark.asyncio
 async def test_argumentos_json_invalidos_no_abre_canal():
     mt, client = _memory_tools()
@@ -153,6 +168,7 @@ async def test_argumentos_json_invalidos_no_abre_canal():
     ok, text = await mt.execute(bad, task="t4")
     assert ok is False
     client.call.assert_not_awaited()
+
 
 @pytest.mark.asyncio
 async def test_tool_alucinada_fuera_de_superficie_se_rebota():

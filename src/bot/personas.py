@@ -34,9 +34,11 @@ FASE_NOTE = (
     "reciente; lo demás funciona igual."
 )
 
+
 def load_personas() -> dict:
     with open(PERSONAS_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
 
 def default_persona(personas: dict) -> dict:
     """Persona por defecto: Jane. Sin ella, la primera del yaml; sin yaml, nada."""
@@ -47,6 +49,7 @@ def default_persona(personas: dict) -> dict:
     raise SystemExit(
         "personas/agents.yaml no define ninguna persona (se esperaba 'jane')."
     )
+
 
 def render_system_prompt(persona: dict, current_user: str) -> str:
     parts = [

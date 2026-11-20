@@ -95,7 +95,7 @@ contratos del substrato; el payload se construye clave a clave).
 ### DoD de v3-FR-02a
 
 - [ ] Escribir por Telegram 1:1 y recibir respuesta coherente de la persona por defecto
-- [ ] El edge no persiste nada propio (sin memoria; como mucho estado de sesión efémero)
+- [ ] El edge no persiste nada propio (sin memoria; como mucho estado de sesión efímero)
 
 ## DoD de v3-FR-01
 

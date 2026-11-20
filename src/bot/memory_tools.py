@@ -74,7 +74,7 @@ EDGE_TOOLS = [
             "description": (
                 "Recupera de la memoria persistente lo guardado o dicho "
                 "antes. Úsala cuando el usuario pregunte por algo anterior "
-                "(«¿qué te dije de...?», «¿te acuerdas de...?», «qué "
+                "(«¿qué te dije de...?», «¿te acuerdas de...?», «¿qué "
                 "tengo pendiente de...?») o cuando un hecho previo sea "
                 "relevante para la respuesta actual."
             ),
@@ -95,6 +95,7 @@ EDGE_TOOLS = [
         },
     },
 ]
+
 
 class MemoryTools:
     """Ejecutor de las 2 tools de borde. Recibe el cliente MCP inyectado

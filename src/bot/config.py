@@ -18,6 +18,7 @@ class Settings:
     memory_project: str
     llm_max_tool_rounds: int
 
+
 def load_settings() -> Settings:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
