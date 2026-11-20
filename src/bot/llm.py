@@ -7,10 +7,8 @@ import httpx
 
 log = logging.getLogger("edge-bot.llm")
 
-
 class LLMError(RuntimeError):
     pass
-
 
 class GatewayLLM:
     def __init__(self, base_url: str, model: str, timeout: float = 300.0,
@@ -25,7 +23,13 @@ class GatewayLLM:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def chat(self, messages: list[dict]) -> str:
+    async def chat(self, messages: list[dict],
+                   tools: list[dict] | None = None) -> dict:
+        """Un pase de chat. Devuelve el MENSAJE del asistente (dict de la
+        respuesta: content y, si pidió tools, tool_calls) — el loop de
+        function calling vive en el llamador, que decide si ejecutar y
+        volver a pasar. `tools=None` equivale al chat plano del 02a.
+        """
         t0 = time.monotonic()
         body = {
             "model": self._model,
@@ -35,6 +39,8 @@ class GatewayLLM:
             # puede durar minutos y el cliente se come el timeout entero
             "max_tokens": self._max_tokens,
         }
+        if tools:
+            body["tools"] = tools
         try:
             resp = await self._client.post(self._url, json=body)
             # EL CUERPO DEL ERROR ES EL DIAGNÓSTICO: litellm/LM Studio dicen
@@ -47,17 +53,20 @@ class GatewayLLM:
                 )
             data = resp.json()
             choice = data["choices"][0]
-            content = (choice.get("message") or {}).get("content", "").strip()
+            msg = choice.get("message") or {}
+            content = (msg.get("content") or "").strip()
+            tool_calls = msg.get("tool_calls") or []
             usage = data.get("usage") or {}
-            if not content:
+            if not content and not tool_calls:
                 # DIAGNÓSTICO de la respuesta vacía (E2E 16 nov, dos
                 # casos con la misma firma: finish='length' tokens_out=1024
                 # y content vacío). ¿Se fue el texto a reasoning_content
                 # (modelo de razonamiento que se gasta el techo pensando)
                 # o fue un loop degenerado de whitespace? El choice crudo
                 # lo dice. Solo se loguea en el caso vacío: cero ruido
-                # en el flujo normal.
-                msg = choice.get("message") or {}
+                # en el flujo normal. (con tools, un mensaje puede traer
+                # SOLO tool_calls y el content vacío: eso es normal, no
+                # degenerado, y no dispara esta guarda)
                 log.warning(
                     "contenido vacío: finish=%r content=%r reasoning=%r "
                     "msg_keys=%s usage=%s",
@@ -66,14 +75,16 @@ class GatewayLLM:
                     (msg.get("reasoning_content") or "")[:300],
                     sorted(msg.keys()), usage,
                 )
-            # finish_reason y tokens de salida: si Jane vuelve a salir
-            # decapitada ("stop" degenerado vs "length"), aquí se ve
+            # finish_reason, tokens de salida y tools pedidas: si Jane
+            # vuelve a salir decapitada ("stop" degenerado vs "length")
+            # o un tool_call llega retorcido, aquí se ve
             log.info(
-                "llm %s ok en %.1f s finish=%r tokens_out=%s",
+                "llm %s ok en %.1f s finish=%r tokens_out=%s tool_calls=%d",
                 self._model, time.monotonic() - t0,
                 choice.get("finish_reason"), usage.get("completion_tokens"),
+                len(tool_calls),
             )
-            return content
+            return msg
         except LLMError:
             raise
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as e:

@@ -1,8 +1,9 @@
 """Personas del edge: carga de personas/agents.yaml y render del prompt.
 
-v3-FR-02a: la semilla agents.yaml NO se toca (es el salvamento del repo
-viejo). La nota de fase la inyecta el runtime para que la persona no
-alucine tools o memoria que todavía no existen en el edge.
+La semilla agents.yaml NO se toca (es el salvamento del repo viejo, con
+su catálogo de tools LEGACY que aquí no existe). La nota de fase la
+inyecta el runtime: desde v3-FR-02b declara las DOS tools de borde reales
+(memory_save / memory_recall) y acota los nombres antiguos del catálogo.
 """
 from pathlib import Path
 
@@ -12,16 +13,30 @@ import yaml
 PERSONAS_PATH = Path(__file__).resolve().parents[2] / "personas" / "agents.yaml"
 
 FASE_NOTE = (
-    "FASE v3-FR-02a (prototipo): en esta fase NO tienes herramientas ni "
-    "memoria persistente. Responde conversacionalmente con el contexto que "
-    "tienes. No anuncies guardados ni búsquedas: cuando existan, lo sabrás."
+    "MEMORIA PERSISTENTE (fase v3-FR-02b): tienes DOS herramientas reales, "
+    "memory_save y memory_recall — son tu única superficie; los nombres del "
+    "catálogo antiguo (time, search, memory_core, calendar_core, drive_core, "
+    "attendee_search, user_governance) NO existen en esta fase y no debes "
+    "mencionarlos ni prometerlos.\n"
+    "- memory_save(texto): guarda un hecho durable cuando el usuario pida "
+    "recordar algo («recuérdame», «apunta», «no olvides») o afirme un dato "
+    "explícito y duradero (preferencia, decisión, contacto, plan). Pide SIEMPRE "
+    "una frase autocontenida, sin pronombres sin antecedente. El guardado se "
+    "confirma al aceptarse el registro: confirma al usuario con naturalidad "
+    "(«apuntado»), sin anunciar mecánica interna (registros, tareas, "
+    "vectorización).\n"
+    "- memory_recall(consulta): recupera lo guardado antes cuando el usuario "
+    "pregunte por algo anterior o cuando un hecho previo sea relevante para "
+    "responder. Si no devuelve nada, dilo tal cual: JAMÁS inventes "
+    "recuerdos.\n"
+    "Si una herramienta falla, dilo con naturalidad y ofrece reintentarlo. "
+    "Además de esta memoria persistente sigues viendo la conversación "
+    "reciente; lo demás funciona igual."
 )
-
 
 def load_personas() -> dict:
     with open(PERSONAS_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
-
 
 def default_persona(personas: dict) -> dict:
     """Persona por defecto: Jane. Sin ella, la primera del yaml; sin yaml, nada."""
@@ -32,7 +47,6 @@ def default_persona(personas: dict) -> dict:
     raise SystemExit(
         "personas/agents.yaml no define ninguna persona (se esperaba 'jane')."
     )
-
 
 def render_system_prompt(persona: dict, current_user: str) -> str:
     parts = [

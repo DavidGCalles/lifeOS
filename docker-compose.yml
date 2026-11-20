@@ -15,7 +15,7 @@ services:
   qdrant:
     healthcheck:
       # la imagen qdrant no trae curl/wget; bash si, y /dev/tcp es builtin
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1:6333' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,10 +46,13 @@ services:
   # ==========================================================
 
   edge-bot:
-    # v3-FR-02a (#168): loop del bot — Telegram 1:1 → persona por defecto
-    # (Jane, personas/agents.yaml) → LLM vía gateway de coreAI (litellm,
-    # modelo local-fallback) → respuesta al chat. Sin tools, sin memoria
-    # persistente: sin volúmenes, la ventana de mensajes vive en RAM.
+    # v3-FR-02a (#168) + v3-FR-02b (#169): loop del bot — Telegram 1:1 →
+    # persona por defecto (Jane, personas/agents.yaml) → LLM vía gateway de
+    # coreAI (litellm, modelo local-fallback) → respuesta al chat. Desde el
+    # 02b Jane tiene DOS tools de borde (memory_save/memory_recall) que se
+    # traducen a los contratos del substrato por MCP (core-mcp, sesión por
+    # llamada). El edge sigue sin persistir nada propio: sin volúmenes, la
+    # ventana efímera vive en RAM y la memoria persistente es la de coreAI.
     build:
       context: .
       dockerfile: Dockerfile
@@ -63,6 +66,11 @@ services:
         required: false
     environment:
       LITELLM_BASE_URL: http://litellm:4000/v1
+      # frontera MCP del substrato (service del compose incluido, misma red
+      # coreai_backend). Sin depends_on de core-mcp a propósito: el cliente
+      # es sesión-por-llamada y el bot sobrevive (aviso de Jane) a un
+      # core-mcp caído o reiniciándose — un gating aquí no aporta nada.
+      CORE_MCP_URL: http://core-mcp:8000/mcp
     depends_on:
       litellm:
         # gating honesto: el gateway espera a Infinity (start_period 10m en

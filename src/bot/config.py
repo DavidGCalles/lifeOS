@@ -14,7 +14,9 @@ class Settings:
     llm_max_tokens: int
     poll_timeout: int
     window_size: int
-
+    core_mcp_url: str
+    memory_project: str
+    llm_max_tool_rounds: int
 
 def load_settings() -> Settings:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -43,4 +45,13 @@ def load_settings() -> Settings:
         llm_max_tokens=int(os.environ.get("LLM_MAX_TOKENS", "1024")),
         poll_timeout=int(os.environ.get("POLL_TIMEOUT", "50")),
         window_size=int(os.environ.get("WINDOW_SIZE", "5")),
+        # v3-FR-02b: frontera MCP del substrato (service core-mcp del
+        # compose incluido, red coreai_backend)
+        core_mcp_url=os.environ.get("CORE_MCP_URL", "http://core-mcp:8000/mcp"),
+        # namespace del inquilino en la unified memory (Metadata FR-3 de
+        # coreAI: campo project genérico, valores del inquilino)
+        memory_project=os.environ.get("LIFEOS_MEMORY_PROJECT", "lifeos"),
+        # rondas máx de tool loop por mensaje: cada ronda es un pase del
+        # LLM (razonamiento incluido) — bounded por diseño, no infinito
+        llm_max_tool_rounds=int(os.environ.get("LLM_MAX_TOOL_ROUNDS", "3")),
     )
